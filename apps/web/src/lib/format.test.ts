@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hrefFor, label, usd } from './format';
+import { dateTime, day, dayLong, hrefFor, label, usd } from './format';
 
 describe('hrefFor', () => {
   it('routes every citable code to its page', () => {
@@ -22,5 +22,15 @@ describe('formatting', () => {
     expect(usd(650_000)).toBe('$6,500.00');
     expect(usd(null)).toBe('—');
     expect(label('HOLD_UNPAID')).toBe('hold unpaid');
+  });
+});
+
+describe("dates read in the barn's time zone wherever they are rendered", () => {
+  it('prints the same text for a server in UTC and a browser in Texas', () => {
+    // 01:30 UTC on the 21st is still the evening of the 20th in the barn.
+    expect(dateTime('2026-04-21T01:30:00.000Z')).toBe('Apr 20, 8:30 PM');
+    expect(day('2026-04-21T01:30:00.000Z')).toBe('Apr 20');
+    expect(dayLong('2026-04-21T01:30:00.000Z')).toBe('Mon, Apr 20, 2026');
+    expect(dateTime(null)).toBe('—');
   });
 });

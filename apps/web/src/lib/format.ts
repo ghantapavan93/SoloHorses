@@ -1,4 +1,19 @@
-import { format, formatDistanceToNowStrict, parseISO } from 'date-fns';
+import { formatDistanceToNowStrict, parseISO } from 'date-fns';
+
+/**
+ * The barn's clock. Every date on a screen reads in the operation's own time zone wherever the
+ * page happens to be rendered — a server in another region and the browser in front of a person
+ * must print the same text, or React finds the two disagreeing at hydration.
+ */
+export const BARN_TIME_ZONE = 'America/Chicago';
+
+const inBarnTime = (options: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat('en-US', { timeZone: BARN_TIME_ZONE, ...options });
+const DAY = inBarnTime({ month: 'short', day: 'numeric' });
+const DAY_LONG = inBarnTime({ weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+const DATE_TIME = inBarnTime({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+/** Newer ICU puts a narrow no-break space before AM/PM; a plain space reads the same and diffs the same everywhere. */
+const plain = (text: string) => text.replace(/ /g, ' ');
 
 export function usd(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) return '—';
@@ -9,17 +24,17 @@ export function usd(cents: number | null | undefined): string {
 
 export function day(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return format(parseISO(iso), 'MMM d');
+  return plain(DAY.format(parseISO(iso)));
 }
 
 export function dayLong(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return format(parseISO(iso), 'EEE, MMM d, yyyy');
+  return plain(DAY_LONG.format(parseISO(iso)));
 }
 
 export function dateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return format(parseISO(iso), 'MMM d, h:mm a');
+  return plain(DATE_TIME.format(parseISO(iso)));
 }
 
 export function ago(iso: string | null | undefined): string {
