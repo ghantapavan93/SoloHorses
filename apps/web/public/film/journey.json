@@ -1,0 +1,44 @@
+{
+  "file": "film/journey.webm",
+  "poster": "film/journey-poster.jpg",
+  "captions": "film/journey.vtt",
+  "recordedAt": "2026-09-21T21:52:57.710Z",
+  "commit": "5afa6f04a5233ee27cf607e120d37f4fd0407561",
+  "durationSec": 64,
+  "width": 1280,
+  "height": 720,
+  "beats": [
+    {
+      "at": 5.4,
+      "label": "01 · The records already exist"
+    },
+    {
+      "at": 23.4,
+      "label": "02 · What needs the vet today? — the answer is a worklist"
+    },
+    {
+      "at": 30.2,
+      "label": "03 · Why can't R-0037 leave?"
+    },
+    {
+      "at": 34.4,
+      "label": "04 · It shows its work: her records, the rules, the person it waits for"
+    },
+    {
+      "at": 41.7,
+      "label": "05 · Ask prepares the next step — and stops"
+    },
+    {
+      "at": 47.2,
+      "label": "06 · A person approves, under their name"
+    },
+    {
+      "at": 51.8,
+      "label": "07 · The record exists · RQ-26-0001 — and enters the x-ray"
+    },
+    {
+      "at": 57,
+      "label": "08 · Every decision. On record."
+    }
+  ]
+}
