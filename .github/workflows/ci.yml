@@ -34,7 +34,6 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/daysheet?schema=public
       REDIS_URL: redis://127.0.0.1:6380
       AUTH_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
@@ -100,8 +99,10 @@ jobs:
       - name: End to end — boot both apps and run Playwright
         run: |
           pnpm --filter web exec playwright install --with-deps chromium
-          (cd apps/api && node dist/main.js > api.log 2>&1 &)
-          (cd apps/web && pnpm start > web.log 2>&1 &)
+          # The apps run as they would in production: workers on, the lab open, Ask offline — not as a test
+          # module, whose jobs never leave the ledger and whose parked sync would keep the books down.
+          (cd apps/api && NODE_ENV=production LAB_ENABLED=true ASK_PROVIDER=offline node dist/main.js > api.log 2>&1 &)
+          (cd apps/web && NODE_ENV=production pnpm start > web.log 2>&1 &)
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:3101/health >/dev/null && break; sleep 1; done
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:3100/login >/dev/null && break; sleep 1; done
           pnpm test:e2e
