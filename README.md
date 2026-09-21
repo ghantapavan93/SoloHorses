@@ -143,7 +143,7 @@ What the tests prove: a redelivered Stripe event yields one payment; an ACH paym
 
 ## Deploy it, free
 
-Vercel for the web, Render for the API with its workers and a Redis, Neon for Postgres — three
+Vercel for the web, Render for the API (one process, no Redis: jobs inline from the ledger), Neon for Postgres — three
 free tiers, no card, the same image and migrations `docker compose` runs. `render.yaml` and
 `apps/web/vercel.json` carry what the platforms can read; [`docs/DEPLOY.md`](docs/DEPLOY.md) is
 the runbook: the order, the one shared secret, what each free tier changes (a sleeping instance,

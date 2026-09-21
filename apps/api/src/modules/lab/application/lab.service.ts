@@ -165,11 +165,14 @@ export class LabService {
       },
       {
         name: 'Redis',
-        state: jobs.mode === 'redis' ? 'HEALTHY' : 'DEGRADED',
+        // Configured and reachable: the queue. Not configured: one process by choice, still healthy. Configured and gone: degraded.
+        state: jobs.redis === 'unreachable' ? 'DEGRADED' : 'HEALTHY',
         note:
-          jobs.mode === 'redis'
+          jobs.redis === 'connected'
             ? `queue · cache ${this.cache.store}`
-            : 'not reachable — jobs run inline, cache in memory',
+            : jobs.redis === 'none'
+              ? 'none configured · one process: jobs inline from the ledger, cache in memory'
+              : 'not reachable — jobs run inline, cache in memory',
       },
       {
         name: 'BullMQ',

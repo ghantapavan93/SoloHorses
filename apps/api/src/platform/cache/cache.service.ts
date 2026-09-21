@@ -54,7 +54,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    if (this.envService.env.NODE_ENV === 'test') return;
+    if (this.envService.env.NODE_ENV === 'test' || !this.envService.env.REDIS_URL) return;
     const client = new IORedis(this.envService.env.REDIS_URL, {
       lazyConnect: true,
       maxRetriesPerRequest: 1,

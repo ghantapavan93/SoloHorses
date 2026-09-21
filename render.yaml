@@ -4,10 +4,12 @@
 #   marked `sync: false` (Neon's connection string, the secret shared with the web, the
 #   web's URL) and reads everything else from here. docs/DEPLOY.md is the runbook.
 #
-# One web service runs the API and the queue workers in the same process (WORKERS=on): the
-# free plan allows one always-on instance per account, and a separate worker would spend it.
-# The service migrates and seeds the synthetic world on its first boot (SEED_ON_EMPTY), and
-# never resets a world someone is in the middle of.
+# One web service, one process, no Redis: the free plan allows one always-on instance per
+# workspace and one free Key Value, and a workspace that already has either would refuse the
+# second. Without REDIS_URL the API runs its jobs inline from the ledger and keeps its cache and
+# rate limits in memory — the same rules, the same records. Set REDIS_URL later to move the
+# queues onto a Redis. The service migrates and seeds the synthetic world on its first boot
+# (SEED_ON_EMPTY) and never resets a world someone is in the middle of.
 services:
   - type: web
     name: daysheet-api
@@ -23,8 +25,6 @@ services:
         value: production
       - key: API_PORT
         value: '10000'
-      - key: WORKERS
-        value: 'on'
       - key: TRUST_PROXY
         value: 'on'
       - key: SEED_ON_EMPTY
@@ -43,19 +43,6 @@ services:
       # The same value on Vercel: the web mints the API's per-request tokens with it.
       - key: AUTH_SECRET
         sync: false
-      # The web's public URL, once Vercel has one (CORS and the links the API writes).
+      # The web's public URL, once Vercel has one (CORS and where the API sends a browser back to).
       - key: WEB_URL
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: daysheet-redis
-          property: connectionString
-
-  # BullMQ needs a Redis that refuses writes when full rather than evicting a queue's keys.
-  - type: keyvalue
-    name: daysheet-redis
-    plan: free
-    region: oregon
-    maxmemoryPolicy: noeviction
-    ipAllowList: []

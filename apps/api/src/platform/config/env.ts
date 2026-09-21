@@ -12,7 +12,8 @@ const EnvSchema = z.object({
   /** The public base URL Twilio signs requests against (ngrok/Vercel); unset locally. */
   API_URL_PUBLIC: z.string().url().optional(),
   DATABASE_URL: z.string().min(1),
-  REDIS_URL: z.string().default('redis://127.0.0.1:6380'),
+  /** Empty means one process and no Redis: jobs run inline from the ledger, cache and rate limits in memory. */
+  REDIS_URL: z.string().optional().default(''),
   /** One image, two roles: `api` serves HTTP and, by default, runs the workers too; `worker` runs only the workers. */
   WORKERS: z.enum(['on', 'off']).default('on'),
   /** Behind a platform's proxy (Render, Fly, a load balancer) the client's address is in X-Forwarded-For; the rate limits key on it. Off when the API faces its callers directly. */

@@ -105,6 +105,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   /** Marks work running inside a flush, so a nested flush defers instead of waiting on itself. */
   private readonly flushScope = new AsyncLocalStorage<true>();
   mode: 'redis' | 'inline' = 'inline';
+  /** Whether a Redis was configured at all: a missing one is a choice, an unreachable one is an outage. */
+  redis: 'connected' | 'unreachable' | 'none' = 'none';
   paused = false;
 
   constructor(
@@ -120,6 +122,11 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     if (this.envService.env.NODE_ENV === 'test') return; // tests drive handlers and flushes directly
     const url = this.envService.env.REDIS_URL;
+    if (!url) {
+      this.logger.log('No REDIS_URL: one process, jobs run inline from the ledger');
+      this.startFlushTimer();
+      return;
+    }
     const probe = new IORedis(url, {
       lazyConnect: true,
       maxRetriesPerRequest: 1,
@@ -137,6 +144,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       this.connection = new IORedis(url, { maxRetriesPerRequest: null, enableReadyCheck: false });
       this.connection.on('error', (error) => this.logger.warn(`redis: ${error.message}`));
       this.mode = 'redis';
+      this.redis = 'connected';
       this.logger.log(`BullMQ connected to Redis ${version} at ${url}`);
       if (this.envService.env.WORKERS === 'off')
         this.logger.log('WORKERS=off: this process enqueues; a worker process runs the queues');
@@ -144,12 +152,16 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       probe.disconnect();
       this.mode = 'inline';
+      this.redis = 'unreachable';
       this.logger.warn(
         `Redis unavailable (${(error as Error).message}); jobs run inline in this process. Set REDIS_URL to use BullMQ.`,
       );
     }
-    // The safety net: ledger rows that were written in a transaction but never handed off,
-    // and inline retries whose wait has elapsed.
+    this.startFlushTimer();
+  }
+
+  /** The safety net: ledger rows written in a transaction but never handed off, and inline retries whose wait has elapsed. */
+  private startFlushTimer(): void {
     this.flushTimer = setInterval(
       () => void this.flushPending().catch((e: Error) => this.logger.warn(`flush: ${e.message}`)),
       2_000,
@@ -384,7 +396,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         };
       }
     }
-    return { mode: this.mode, paused: this.paused, byStatus, queues };
+    return { mode: this.mode, redis: this.redis, paused: this.paused, byStatus, queues };
   }
 
   async recent(limit = 50, queue?: string) {

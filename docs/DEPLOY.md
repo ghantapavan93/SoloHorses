@@ -4,9 +4,9 @@ The stack is one HTTP process (the API, with its queue workers in the same proce
 Redis, and a Next.js app. Three free tiers hold it without a card:
 
 ```
-browser ──► Vercel (apps/web, Next.js)  ──server-side──►  Render (apps/api, Docker: API + workers)
-                                                              │                      │
-                                                     Neon (Postgres)        Render Key Value (Redis)
+browser ──► Vercel (apps/web, Next.js)  ──server-side──►  Render (apps/api, Docker, one process)
+                                                              │
+                                                     Neon (Postgres)
 ```
 
 Nothing is faked to fit the tiers. The same image `docker compose` builds runs on Render; the
@@ -14,12 +14,12 @@ same migrations run; the synthetic world is seeded once, on the first boot, by
 `packages/db/scripts/seed-if-empty.mjs`; the review graph's checkpoints live in Neon in their own
 schema. What the free tiers do change:
 
-| Tier                    | What free means here                                                                                                                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Render free web service | Sleeps after 15 idle minutes; the first request then takes 30–60 s. 512 MB, 750 instance-hours a month — one always-on service, which is why the workers share the API's process (`WORKERS=on`). |
-| Render Key Value (free) | 25 MB, no persistence: a restart empties the queues. The job ledger in Postgres is the record; every few seconds it reconciles with Redis and hands off again what a restart forgot.             |
-| Neon free               | 0.5 GB; the compute suspends after 5 idle minutes and wakes in about a second.                                                                                                                   |
-| Vercel Hobby            | Personal, non-commercial use; 100 GB bandwidth a month. The film (6.5 MB) and the mare's model (1.1 MB) are static files on its CDN.                                                             |
+| Tier                    | What free means here                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Render free web service | Sleeps after 15 idle minutes; the first request then takes 30–60 s. 512 MB, 750 instance-hours a month per workspace — one always-on service.                                                                                                                                                                                                                                           |
+| No Redis                | Render allows one free Key Value per workspace, and a workspace that already has one refuses a second; so the blueprint asks for none. Without `REDIS_URL` the API runs its jobs inline from the ledger and keeps its cache and rate limits in memory: the same rules, the same records, one process. The honesty page says so. Set `REDIS_URL` later and the queues move onto a Redis. |
+| Neon free               | 0.5 GB; the compute suspends after 5 idle minutes and wakes in about a second.                                                                                                                                                                                                                                                                                                          |
+| Vercel Hobby            | Personal, non-commercial use; 100 GB bandwidth a month. The film (6.5 MB) and the mare's model (1.1 MB) are static files on its CDN.                                                                                                                                                                                                                                                    |
 
 ## Order
 
@@ -38,11 +38,11 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    graph's checkpointer want a plain session), and keep `?sslmode=require` on it:
    `postgresql://…@ep-….us-west-2.aws.neon.tech/neondb?sslmode=require`
 
-### 2 · Render — the API, its workers and Redis
+### 2 · Render — the API
 
 1. [render.com](https://render.com) → New → **Blueprint** → connect the GitHub repository.
    Render reads [`render.yaml`](../render.yaml): one free web service built from
-   `apps/api/Dockerfile`, one free Key Value instance with `noeviction` (BullMQ's requirement).
+   `apps/api/Dockerfile`.
 2. It prompts for the three values the file leaves out:
    - `DATABASE_URL` — Neon's string from step 1
    - `AUTH_SECRET` — the value made above
