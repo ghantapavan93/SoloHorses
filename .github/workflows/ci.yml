@@ -102,7 +102,8 @@ jobs:
           # The apps run as they would in production: workers on, the lab open, Ask offline — not as a test
           # module, whose jobs never leave the ledger and whose parked sync would keep the books down.
           (cd apps/api && NODE_ENV=production LAB_ENABLED=true ASK_PROVIDER=offline node dist/main.js > api.log 2>&1 &)
-          (cd apps/web && NODE_ENV=production pnpm start > web.log 2>&1 &)
+          # Auth.js in production trusts only a host it is told to (AUTH_URL, AUTH_TRUST_HOST, or a known platform); told nothing, sign-in sets no cookie.
+          (cd apps/web && NODE_ENV=production AUTH_TRUST_HOST=true pnpm start > web.log 2>&1 &)
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:3101/health >/dev/null && break; sleep 1; done
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:3100/login >/dev/null && break; sleep 1; done
           pnpm test:e2e
