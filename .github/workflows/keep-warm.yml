@@ -1,0 +1,21 @@
+# A free Render instance sleeps after fifteen idle minutes and takes most of a minute to wake;
+# a health call every ten keeps the demo answering. Opt in by setting the repository variable
+# RENDER_HEALTH_URL (Settings → Secrets and variables → Actions → Variables) to the API's
+# /health URL; with it unset this workflow does nothing.
+name: keep-warm
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    if: ${{ vars.RENDER_HEALTH_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Health
+        env:
+          URL: ${{ vars.RENDER_HEALTH_URL }}
+        run: curl -fsS --max-time 90 "$URL" > /dev/null && echo "awake" || echo "asleep or unhealthy — the next call will find it awake"

@@ -1,0 +1,61 @@
+# Render Blueprint — the API and its Redis on the free plan, one service, no card.
+#
+#   Dashboard → New → Blueprint → this repository → Apply. Render prompts for the values
+#   marked `sync: false` (Neon's connection string, the secret shared with the web, the
+#   web's URL) and reads everything else from here. docs/DEPLOY.md is the runbook.
+#
+# One web service runs the API and the queue workers in the same process (WORKERS=on): the
+# free plan allows one always-on instance per account, and a separate worker would spend it.
+# The service migrates and seeds the synthetic world on its first boot (SEED_ON_EMPTY), and
+# never resets a world someone is in the middle of.
+services:
+  - type: web
+    name: daysheet-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: '10000'
+      - key: WORKERS
+        value: 'on'
+      - key: TRUST_PROXY
+        value: 'on'
+      - key: SEED_ON_EMPTY
+        value: 'true'
+      - key: DEMO_CLOCK
+        value: '2026-04-20'
+      - key: LAB_ENABLED
+        value: 'true'
+      - key: ASK_PROVIDER
+        value: auto
+      - key: NODE_OPTIONS
+        value: '--max-old-space-size=400'
+      # Neon's direct (non-pooled) connection string, `?sslmode=require`; the same database the web reads through the API.
+      - key: DATABASE_URL
+        sync: false
+      # The same value on Vercel: the web mints the API's per-request tokens with it.
+      - key: AUTH_SECRET
+        sync: false
+      # The web's public URL, once Vercel has one (CORS and the links the API writes).
+      - key: WEB_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: daysheet-redis
+          property: connectionString
+
+  # BullMQ needs a Redis that refuses writes when full rather than evicting a queue's keys.
+  - type: keyvalue
+    name: daysheet-redis
+    plan: free
+    region: oregon
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
