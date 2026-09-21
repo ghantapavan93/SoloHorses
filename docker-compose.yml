@@ -1,0 +1,116 @@
+# The whole stack for a reviewer with Docker and nothing else:
+#   docker compose up --build
+# then open http://localhost:3100 (web) — the api is on :3101, the worker has no port.
+#
+# Local development keeps using only the infrastructure services (db, redis) with the apps
+# run from source:  docker compose up -d db redis
+#   DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/daysheet?schema=public
+#   REDIS_URL=redis://127.0.0.1:6380
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: daysheet
+    ports:
+      - '5433:5432'
+    volumes:
+      - daysheet-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '6380:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The API: HTTP, migrations at start, and the seed on an empty database. WORKERS=off — the worker owns the queues.
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: ['app']
+    environment:
+      NODE_ENV: production
+      API_PORT: 3101
+      WEB_URL: http://localhost:3100
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/daysheet?schema=public
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-a-real-environment}
+      DEMO_CLOCK: ${DEMO_CLOCK:-2026-04-20}
+      WORKERS: 'off'
+      SEED_ON_EMPTY: 'true'
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # A local Ollama on the host answers Ask for free when no key is set (host.docker.internal is the host).
+      ASK_PROVIDER: ${ASK_PROVIDER:-auto}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    ports:
+      - '3101:3101'
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(\"http://127.0.0.1:3101/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # The worker: the same image, the queues only. Scale it; the api stays one.
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: ['app']
+    command: ['sh', '-c', 'cd apps/api && node dist/main.js']
+    environment:
+      NODE_ENV: production
+      API_PORT: 3102
+      WEB_URL: http://localhost:3100
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/daysheet?schema=public
+      REDIS_URL: redis://redis:6379
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-a-real-environment}
+      DEMO_CLOCK: ${DEMO_CLOCK:-2026-04-20}
+      WORKERS: 'on'
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+    depends_on:
+      api: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_URL: http://api:3101
+        AUTH_SECRET: ${AUTH_SECRET:-change-me-in-a-real-environment}
+    profiles: ['app']
+    environment:
+      NODE_ENV: production
+      API_URL: http://api:3101
+      NEXTAUTH_URL: http://localhost:3100
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-a-real-environment}
+      AUTH_TRUST_HOST: 'true'
+    ports:
+      - '3100:3100'
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  daysheet-pg:
