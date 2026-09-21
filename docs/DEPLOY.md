@@ -47,8 +47,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    - `DATABASE_URL` — Neon's string from step 1
    - `AUTH_SECRET` — the value made above
    - `WEB_URL` — `http://localhost:3100` for now; step 3 gives the real one
-3. Apply. The first deploy builds the image (5–8 minutes), runs `prisma migrate deploy`, seeds the
-   synthetic world because the database is empty, then serves. Open
+3. Apply. If the first sync fails before the service exists, Render drops what you typed at the
+   prompts: open the service's **Environment** and add the three yourself. The entrypoint refuses
+   to start without them and says which is missing.
+4. The first deploy builds the image (5–8 minutes), runs `prisma migrate deploy` (retrying while
+   a suspended Neon compute wakes), seeds the synthetic world because the database is empty,
+   then serves. Render probes `/health/live`, which never touches the database, so Neon can
+   still suspend between visits. Open
    `https://daysheet-api-….onrender.com/health` — it reports the database, the frozen demo
    clock, which integrations are live or simulated, and when the world was seeded.
 
@@ -123,7 +128,7 @@ Then Render → the service → Manual Deploy → **Restart service**.
 
 A free Render instance sleeps after fifteen idle minutes. Before putting the link in front of
 someone, open it once yourself; or set the repository variable `RENDER_HEALTH_URL` to the API's
-`/health` URL and [`keep-warm.yml`](../.github/workflows/keep-warm.yml) calls it every ten
+`/health/live` URL and [`keep-warm.yml`](../.github/workflows/keep-warm.yml) calls it every ten
 minutes from GitHub Actions. One always-on service fits Render's 750 free hours a month; two would
 not.
 

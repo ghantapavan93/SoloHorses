@@ -6,7 +6,9 @@ loadEnv({ path: path.resolve(__dirname, '../../.env') });
 import { defineConfig } from 'prisma/config';
 
 // Prisma 7: the datasource URL lives here, not in schema.prisma.
-// `prisma generate` must work without a database, so we fall back to a placeholder.
+// `prisma generate` must work without a database, so an unset DATABASE_URL falls back to a
+// placeholder — one that names the problem, so a migration run against it says
+// "database-url-not-set" rather than pointing at a localhost that happens not to answer.
 export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
@@ -14,6 +16,6 @@ export default defineConfig({
     seed: 'tsx prisma/seed.ts',
   },
   datasource: {
-    url: process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:5432/daysheet?schema=public',
+    url: process.env.DATABASE_URL || 'postgresql://unset:unset@database-url-not-set.invalid:5432/unset',
   },
 });

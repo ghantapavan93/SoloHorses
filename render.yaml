@@ -18,7 +18,8 @@ services:
     region: oregon
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
-    healthCheckPath: /health
+    # Liveness only: the full /health reads the database, and a probe every few seconds would keep Neon's compute awake.
+    healthCheckPath: /health/live
     autoDeploy: true
     envVars:
       - key: NODE_ENV
@@ -37,6 +38,9 @@ services:
         value: auto
       - key: NODE_OPTIONS
         value: '--max-old-space-size=400'
+      # These three are set in the dashboard (Environment), never here. A sync that fails before the
+      # service exists drops what was typed at the prompt: after a failed first sync, check that all
+      # three are present, or the entrypoint stops at once and says which one is missing.
       # Neon's direct (non-pooled) connection string, `?sslmode=require`; the same database the web reads through the API.
       - key: DATABASE_URL
         sync: false

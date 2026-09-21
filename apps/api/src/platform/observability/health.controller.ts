@@ -52,6 +52,16 @@ export class HealthController {
     private readonly envService: EnvService,
   ) {}
 
+  /**
+   * Liveness for a platform's probe: the process is up. No database round trip, so a probe every
+   * few seconds does not keep a database that suspends when idle awake all month.
+   */
+  @Get('live')
+  @Public()
+  live() {
+    return { ok: true, uptimeSec: Math.round(process.uptime()) };
+  }
+
   @Get()
   @Public()
   async health() {

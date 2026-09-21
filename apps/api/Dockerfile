@@ -17,6 +17,7 @@ ENV NODE_ENV=production
 RUN corepack enable && corepack prepare pnpm@12.4.2 --activate
 WORKDIR /repo
 COPY --from=build /repo ./
-# Migrations run once at start by the api role; the worker waits for the api's health.
+# The entrypoint checks the environment, migrates with patience, seeds an empty world once, then serves.
+RUN chmod +x /repo/apps/api/docker-entrypoint.sh
 EXPOSE 3101
-CMD ["sh", "-c", "cd packages/db && pnpm exec prisma migrate deploy && node scripts/seed-if-empty.mjs && cd ../../apps/api && node dist/main.js"]
+CMD ["/repo/apps/api/docker-entrypoint.sh"]

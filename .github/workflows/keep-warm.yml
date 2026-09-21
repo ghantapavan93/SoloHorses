@@ -1,7 +1,8 @@
 # A free Render instance sleeps after fifteen idle minutes and takes most of a minute to wake;
-# a health call every ten keeps the demo answering. Opt in by setting the repository variable
+# a call every ten keeps the demo answering. Opt in by setting the repository variable
 # RENDER_HEALTH_URL (Settings → Secrets and variables → Actions → Variables) to the API's
-# /health URL; with it unset this workflow does nothing.
+# /health/live URL — liveness only, so the database still suspends between visits; with it
+# unset this workflow does nothing.
 name: keep-warm
 
 on:
