@@ -1,0 +1,401 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Daysheet tokens.
+ *
+ * One accent (a deep maroon, #600312 — the colour of the operation's public site, which is a
+ * colour and not a mark) on warm neutrals (hue ≈ 10°, never blue-gray). The accent is never a
+ * status colour. Status has exactly four values. Dark is the default — one near-black
+ * surface, dim navigation, warm-white type, borders at eight percent — and light is a click
+ * away for the office at six in the morning next to spreadsheets and printed contracts.
+ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --font-heading: var(--font-montserrat), var(--font-inter), sans-serif;
+  --font-display: var(--font-oswald), var(--font-inter), sans-serif;
+  --font-serif: var(--font-instrument-serif), Georgia, 'Times New Roman', serif;
+  /* editorial accents for the public pages: paper, cream, copper */
+  --color-paper: var(--paper);
+  --color-cream: var(--cream);
+  --color-copper: var(--copper);
+  --color-copper-2: var(--copper-2);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  /* Status — the only colours that mean something. */
+  --color-ok: var(--ok);
+  --color-ok-foreground: var(--ok-foreground);
+  --color-warn: var(--warn);
+  --color-warn-foreground: var(--warn-foreground);
+  --color-critical: var(--critical);
+  --color-critical-foreground: var(--critical-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  /* Brand accent, for emphasis only. */
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-tint: var(--brand-tint);
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-2xl: 12px;
+  --radius-3xl: 16px;
+  --radius-4xl: 20px;
+}
+
+:root {
+  --radius: 6px;
+  /* warm neutral ramp */
+  --n-0: #ffffff;
+  --n-50: #faf9f9;
+  --n-100: #f4f3f3;
+  --n-150: #eceaea;
+  --n-200: #e6e3e4;
+  --n-300: #d4d0d1;
+  --n-400: #b3aeaf;
+  --n-500: #8c8788;
+  --n-600: #6e6a6b;
+  --n-700: #524e4f;
+  --n-800: #363334;
+  --n-900: #222020;
+  --n-950: #161515;
+  --n-1000: #0e0d0d;
+
+  --background: var(--n-0);
+  --foreground: var(--n-900);
+  --card: var(--n-0);
+  --card-foreground: var(--n-900);
+  --popover: var(--n-0);
+  --popover-foreground: var(--n-900);
+  --primary: var(--n-900);
+  --primary-foreground: var(--n-0);
+  --secondary: var(--n-100);
+  --secondary-foreground: var(--n-900);
+  --muted: var(--n-100);
+  --muted-foreground: var(--n-600);
+  --accent: var(--n-100);
+  --accent-foreground: var(--n-900);
+  --destructive: #c7301f;
+  --border: var(--n-200);
+  --input: var(--n-300);
+  --ring: var(--n-500);
+  --chart-1: #600312;
+  --chart-2: var(--n-700);
+  --chart-3: var(--n-500);
+  --chart-4: var(--n-400);
+  --chart-5: var(--n-300);
+  --sidebar: var(--n-50);
+  --sidebar-foreground: var(--n-800);
+  --sidebar-primary: var(--n-900);
+  --sidebar-primary-foreground: var(--n-0);
+  --sidebar-accent: var(--n-150);
+  --sidebar-accent-foreground: var(--n-900);
+  --sidebar-border: var(--n-200);
+  --sidebar-ring: var(--n-500);
+
+  --ok: #2e7d4f;
+  --ok-foreground: #ffffff;
+  --warn: #a8651a;
+  --warn-foreground: #ffffff;
+  --critical: #c7301f;
+  --critical-foreground: #ffffff;
+  --info: var(--n-600);
+  --info-foreground: #ffffff;
+
+  --brand: #600312;
+  --brand-foreground: #ffffff;
+  --brand-tint: #f8ecee;
+
+  /* editorial accents (the public pages are always dark; these read against near-black) */
+  --paper: #f5f0e9;
+  --cream: #eadfce;
+  --copper: #a95d39;
+  --copper-2: #d48a60;
+}
+
+.dark {
+  /* one surface: the shell, the sidebar and the page share the same near-black */
+  --background: var(--n-1000);
+  --foreground: var(--n-100);
+  --card: var(--n-950);
+  --card-foreground: var(--n-100);
+  --popover: var(--n-950);
+  --popover-foreground: var(--n-100);
+  --primary: var(--n-100);
+  --primary-foreground: var(--n-1000);
+  --secondary: var(--n-900);
+  --secondary-foreground: var(--n-100);
+  --muted: var(--n-900);
+  --muted-foreground: var(--n-400);
+  --accent: var(--n-900);
+  --accent-foreground: var(--n-100);
+  --destructive: #e05a4a;
+  --border: rgb(255 255 255 / 8%);
+  --input: rgb(255 255 255 / 12%);
+  --ring: var(--n-500);
+  --sidebar: var(--n-1000);
+  --sidebar-foreground: var(--n-400);
+  --sidebar-primary: var(--n-100);
+  --sidebar-primary-foreground: var(--n-1000);
+  --sidebar-accent: rgb(255 255 255 / 6%);
+  --sidebar-accent-foreground: var(--n-100);
+  --sidebar-border: rgb(255 255 255 / 8%);
+  --sidebar-ring: var(--n-500);
+
+  --ok: #4fae74;
+  --warn: #d28a3a;
+  --critical: #e05a4a;
+  --info: var(--n-400);
+
+  /* raw maroon is 1.6:1 on dark; this tint is 4.9:1 */
+  --brand: #d9515f;
+  --brand-foreground: var(--n-950);
+  --brand-tint: rgb(217 81 95 / 8%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-variant-numeric: tabular-nums;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-heading tracking-tight;
+  }
+  ::selection {
+    background: var(--brand-tint);
+  }
+}
+
+@layer utilities {
+  /* Uppercase eyebrow labels — decoration, never the only carrier of information. */
+  .eyebrow {
+    @apply font-heading text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground;
+  }
+  /* A row in a list: 32px, quiet hover, no card around it. */
+  .row {
+    @apply transition-colors hover:bg-muted/40;
+  }
+  /* The one-line system/state readout: name on the left, state on the right, mono. */
+  .readout {
+    @apply font-mono text-[11px] uppercase tracking-[0.14em];
+  }
+  /* Editorial display type for the public pages: Inter at its display end, tight and calm. */
+  .display {
+    @apply font-sans font-medium tracking-[-0.02em];
+    font-optical-sizing: auto;
+  }
+  /* The one serif, italic, for the accent line of a headline. */
+  .display em {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    color: #b79a82;
+  }
+  /* Film grain over the public pages: texture, not decoration; never over the application. */
+  .grain {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 90;
+    opacity: 0.14;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  /* The warm glow behind a public page's first screen. */
+  .glow {
+    background:
+      radial-gradient(900px 500px at 80% -5%, rgb(126 56 34 / 0.22), transparent 60%),
+      radial-gradient(600px 350px at 12% 14%, rgb(75 23 22 / 0.24), transparent 68%);
+  }
+  .horse-name {
+    @apply font-display text-[15px] font-medium tracking-wide;
+  }
+  .code {
+    @apply font-mono text-[12px] tabular-nums;
+  }
+  .money {
+    @apply font-mono tabular-nums;
+  }
+}
+
+/* Motion, once: one ease and three durations. Script-driven motion reads the same values from lib/motion.ts. */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 160ms;
+  --dur-base: 320ms;
+  --dur-slow: 600ms;
+}
+
+/* The theme changes as one surface, not as a flash; the scrollbar is part of the page, not the browser's chrome. */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--foreground) 22%, transparent) transparent;
+}
+body {
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out);
+}
+/* Headlines break where a reader would; paragraphs never leave a word alone on a line. */
+.display,
+h1,
+h2 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+/* A press acknowledges the hand before anything else happens. */
+a:active,
+button:active:not(:disabled) {
+  transition-duration: var(--dur-fast);
+}
+
+@layer utilities {
+  /* A raised surface: the shadow carries the palette's warmth, never a grey smear; deeper and cooler in the dark. */
+  .lift {
+    box-shadow:
+      0 1px 2px rgb(31 12 9 / 0.08),
+      0 12px 32px -12px rgb(31 12 9 / 0.28);
+  }
+  .dark .lift {
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.4),
+      0 24px 80px -8px rgb(0 0 0 / 0.6);
+  }
+  /* Frosted chrome (the public nav): blur with a little saturation, so what lies beneath reads as colour, not fog. */
+  .glass {
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+  }
+  /* A hairline of light along a raised surface's top edge, the way a material catches it; invisible in the light theme, where the border carries it. */
+  .dark .lift {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.05),
+      0 1px 2px rgb(0 0 0 / 0.4),
+      0 24px 80px -8px rgb(0 0 0 / 0.6);
+  }
+  /* The one interactive surface that is not a button: a row, a tile, a node. */
+  .pressable {
+    @apply transition-[transform,background-color,border-color] duration-[var(--dur-fast)] ease-[var(--ease-out)] active:scale-[0.99];
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* The signal dock steps aside for the assistant's dock: beside it on a desktop, out of the way under a phone's sheet. */
+html[data-ask-dock='open'] [data-testid='signal-dock'] {
+  right: calc(380px + 1rem);
+}
+@media (max-width: 767px) {
+  html[data-ask-dock='open'] [data-testid='signal-dock'] {
+    display: none;
+  }
+}
+
+/* Inside the shell the board is a page and the assistant has its dock: the floating signal dock stays on the public pages. */
+html[data-shell='1'] [data-testid='signal-dock'] {
+  display: none;
+}
+
+/*
+ * Four frames, one vocabulary. A story frame is editorial and layered; an operational card is
+ * compact and live; an evidence frame is the graph's dark inset; a decision frame carries an
+ * edge that changes with the state. Depth comes from these, not from more cards.
+ */
+.story {
+  background-color: #0f0c0a;
+}
+.frame-story {
+  background: linear-gradient(180deg, #17120f 0%, #100d0b 100%);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 22px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.04),
+    0 30px 80px rgb(0 0 0 / 0.45);
+}
+.frame-evidence {
+  /* An inset, whichever theme: a shade below the page, with the copper glow the readouts share. */
+  background:
+    radial-gradient(1200px 420px at 50% -10%, rgb(212 138 96 / 0.07), transparent 60%),
+    color-mix(in oklab, var(--background) 95%, black);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+.dark .frame-evidence {
+  background: radial-gradient(1200px 420px at 50% -10%, rgb(212 138 96 / 0.07), transparent 60%), #0b0909;
+  border-color: rgb(255 255 255 / 0.09);
+}
+.card-op {
+  background: color-mix(in oklab, var(--muted) 28%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.frame-decision {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+  transition: border-color var(--dur-base, 220ms) var(--ease-out, ease-out);
+}
+.frame-decision[data-state='APPROVED'] {
+  border-left-color: var(--ok);
+}
+.frame-decision[data-state='DECLINED'],
+.frame-decision[data-state='STALE'],
+.frame-decision[data-state='NONE'] {
+  border-left-color: var(--muted-foreground);
+}
