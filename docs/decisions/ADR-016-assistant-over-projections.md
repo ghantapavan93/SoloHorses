@@ -1,0 +1,9 @@
+# ADR-016 — The assistant reads projections behind a policy layer, and every answer is versioned
+
+**Situation.** `user → LLM → database` is not acceptable for veterinary and financial systems. The model must not see phone numbers, payment methods or columns that happen to exist; it must not be asked to enforce invariants; and "it gave a wrong answer yesterday" must be answerable.
+
+**Decision.** The order of operations for one question is: authorization (the guard) → policy (deterministic abstentions for money actions, record mutations and clinical judgment, before a token is spent) → tools that return _projections_ (the fields the model may see, stamped with the record codes they contain and a hash of their state; PII withheld and named as withheld) → the model → schema validation → evidence verification (any cited code the tools did not return is stripped) → the UI. Every answer stores the model, prompt version, tool versions and the combined state hash. The answer cache is keyed by question, role, model and prompt version, and is served only when replaying the tool calls yields the same state hash; new operational state means a new answer. The assistant can retrieve, explain, summarize, route and propose (a request to the team); it cannot change anything. Known invariants stay in code; the assistant explains the exceptions the detectors raised (`getOpenExceptions`) rather than scanning tables for what might be wrong.
+
+**Cost.** A cache hit still replays the tool calls (cheap database reads) to prove the state is unchanged. The policy regexes are conservative and will let some imperative phrasings through to the model, which is instructed to abstain on the same grounds.
+
+**Would change it.** A second model provider would add an adapter behind the same `ModelClient` shape; nothing above it changes. Fine-tuning is still not warranted (ADR-009).
