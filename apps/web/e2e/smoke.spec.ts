@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './helpers';
+import { openAskDock, signIn } from './helpers';
 
 test.describe('critical paths', () => {
   test('recip farm: day sheet → embryo record → intake', async ({ page }) => {
@@ -60,9 +60,8 @@ test.describe('critical paths', () => {
     // Her own embryo renders, which is where the assistant is opened from.
     await page.goto('/embryos/E-26-0001');
     await expect(page.getByText('E-26-0001').first()).toBeVisible();
-    await page.keyboard.press('Control+J');
+    await openAskDock(page);
     const dock = page.getByTestId('ask-dock');
-    await expect(dock).toBeVisible();
     await page.getByPlaceholder(/Ask about an embryo/).fill('Where is E-26-0009 right now?');
     await page.keyboard.press('Enter');
     // The assistant reads through the same scoped services: an abstention ("Not visible to your role"), never the record.
@@ -87,8 +86,7 @@ test.describe('critical paths', () => {
 
   test('ask dock opens with the keyboard and answers', async ({ page }) => {
     await signIn(page, 'recips@daysheet.local');
-    await page.keyboard.press('Control+J');
-    await expect(page.getByTestId('ask-dock')).toBeVisible();
+    await openAskDock(page);
     await page.getByPlaceholder(/Ask about an embryo/).fill('Where is E-26-0002?');
     await page.keyboard.press('Enter');
     // Offline or live, an answer block (statements or an abstention) must appear.

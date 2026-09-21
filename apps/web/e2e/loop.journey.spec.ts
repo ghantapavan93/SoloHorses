@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { closeOpenRequestsAbout, reviewerApi } from './api';
-import { signIn } from './helpers';
+import { openAskDock, signIn } from './helpers';
 
 /**
  * The closed loop as a person lives it, in the `journey` project — before the other specs, so the
@@ -21,9 +21,8 @@ test.describe('the loop, from the dock', () => {
     // 1. On the mare's own page, the question needs no id: the dock knows what "she" means.
     await page.goto(`/horses/${recipId}`);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await page.keyboard.press('Control+J');
+    await openAskDock(page);
     const dock = page.getByTestId('ask-dock');
-    await expect(dock).toBeVisible();
     await expect(dock.getByTestId('ask-context')).toContainText(recipId);
     await dock.getByPlaceholder('Ask about an embryo, a recip, a contract…').fill("Why can't she leave?");
     await dock.getByRole('button', { name: 'Ask', exact: true }).click();

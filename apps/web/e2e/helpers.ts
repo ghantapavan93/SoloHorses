@@ -50,3 +50,15 @@ export async function signIn(page: Page, email: string): Promise<void> {
     JSON.stringify({ savedAt: Date.now(), seededAt: world, cookies: await page.context().cookies() }),
   );
 }
+
+/**
+ * ⌘J is a listener React attaches after hydration; on a slow runner the first press can land
+ * before it exists. Press until the dock answers — a press that reached nobody toggled nothing.
+ */
+export async function openAskDock(page: Page): Promise<void> {
+  const dock = page.getByTestId('ask-dock');
+  await expect(async () => {
+    await page.keyboard.press('Control+J');
+    await expect(dock).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+}
