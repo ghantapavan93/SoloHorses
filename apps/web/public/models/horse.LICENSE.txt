@@ -1,0 +1,5 @@
+horse.glb — "Horse" by Quaternius, from the Animated Animal Pack.
+Source: https://poly.pizza/m/qvTrSG9pZF (file: https://static.poly.pizza/d37dbc87-ca61-4b2c-a2da-d2f0c4240bef.glb)
+License: CC0 1.0 Universal (public domain) — https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded 2026-09-21; 1,108,124 bytes; FBX2glTF export with skinned mesh and animation clips (Walk, Idle, …).
+Recoloured at runtime to the site's palette; no other change. Not an asset of any horse operation.
