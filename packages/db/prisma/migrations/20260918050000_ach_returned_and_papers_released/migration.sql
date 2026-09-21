@@ -1,0 +1,7 @@
+
+-- AlterEnum
+ALTER TYPE "ExceptionKind" ADD VALUE 'PAPERS_RELEASED_FUNDS_RETURNED';
+
+-- AlterEnum
+ALTER TYPE "PaymentStatus" ADD VALUE 'RETURNED';
+

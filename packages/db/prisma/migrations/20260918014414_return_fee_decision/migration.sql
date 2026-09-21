@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ExceptionKind" ADD VALUE 'RETURN_FEE_DECISION';

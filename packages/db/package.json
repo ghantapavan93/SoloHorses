@@ -1,0 +1,50 @@
+{
+  "name": "@daysheet/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prisma schema, migrations, generated client, and the deterministic synthetic seed.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "reset": "prisma migrate reset --force",
+    "seed": "tsx prisma/seed.ts",
+    "studio": "prisma studio",
+    "test": "vitest run",
+    "lint": "eslint src prisma/seed.ts"
+  },
+  "dependencies": {
+    "@daysheet/domain": "workspace:*",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "bcryptjs": "3.0.3",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@faker-js/faker": "10.6.0",
+    "@types/bcryptjs": "3.0.0",
+    "@types/node": "22.20.3",
+    "@types/pg": "8.23.1",
+    "dotenv": "17.4.2",
+    "eslint": "9.39.5",
+    "prisma": "7.10.0",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.70.0",
+    "vitest": "5.0.1"
+  }
+}

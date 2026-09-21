@@ -1,0 +1,1137 @@
+// Daysheet — synthetic operations model for a performance-horse breeding business.
+// Every entity a person cites in conversation has a human-readable code as its primary key
+// (E-26-2041, SS-26-0533, INV-26-1093, R-0347) so the assistant's evidence chips and the
+// audit trail speak the same language as the barn. Internal bookkeeping rows use cuids.
+//
+// Money is always integer cents. Times are UTC; the "barn day" is derived in the domain
+// layer using the business time zone (America/Chicago).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── People & access ─────────────────────────────
+
+enum Role {
+  ADMIN
+  STALLION_OFFICE
+  RECIPS
+  VET
+  BILLING
+  CUSTOMER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role
+  // Customers see only their own records; staff roles see by department.
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  createdAt    DateTime  @default(now())
+
+  checksRecorded    PregnancyCheck[]
+  requests          Request[]
+  askConversations  AskConversation[]
+  askFeedback       AskFeedback[]
+  askMemories       AskMemory[]
+  resolvedDiscrepancies Discrepancy[]
+  ownedExceptions   OperationalException[] @relation("ExceptionOwner")
+  resolvedExceptions OperationalException[] @relation("ExceptionResolver")
+}
+
+model Customer {
+  id               String   @id // C-0042
+  displayName      String
+  email            String?
+  phone            String? // E.164; SMS intake matches on this
+  smsOptedOut      Boolean  @default(false) // carrier STOP keyword honoured until the office re-enables
+  stripeCustomerId String?  @unique
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  users     User[]
+  horses    Horse[]
+  contracts Contract[]
+  embryos   Embryo[]
+  invoices  Invoice[]
+  payments  Payment[]
+  messages  Message[]
+  lotsBought SaleLot[]
+}
+
+// ───────────────────────────── Horses ─────────────────────────────
+
+enum HorseSex {
+  MARE
+  STALLION
+  GELDING
+}
+
+enum HorseKind {
+  DONOR // client mare whose oocytes/embryos are collected
+  RECIPIENT // recip mare in the leased herd
+  STALLION
+  SALE
+}
+
+enum Site {
+  SOUTH // main office + stallion station
+  NORTH // breeding & foaling
+  RECIP_FARM
+  OFFSITE // at the client's, a vet, or in transit
+}
+
+model Horse {
+  id             String    @id // H-0042 (donors/stallions/sale), R-0347 (recips)
+  name           String
+  sex            HorseSex
+  kind           HorseKind
+  site           Site
+  birthYear      Int?
+  registrationNo String?
+  ownerId        String?
+  owner          Customer? @relation(fields: [ownerId], references: [id])
+  // Recip-only fields
+  recipNumber    Int?      @unique // the number on the neck tag / pen sheet
+  recipStatus    RecipStatus?
+  scheduledDepartureOn DateTime? // a leased mare leaving with her client; the departure rule watches it
+  weanedOn       DateTime? // sold with a foal in utero: the return is due after weaning
+  returnedOn     DateTime? // when she came back; the return rule then wants the vet's assessment
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  contractsAsStallion Contract[]     @relation("ContractStallion")
+  contractsAsMare     Contract[]     @relation("ContractMare")
+  semenOrders         SemenOrder[]
+  aspirations         Aspiration[]
+  embryosAsSire       Embryo[]       @relation("EmbryoSire")
+  embryosAsDam        Embryo[]       @relation("EmbryoDam")
+  plannedEmbryos      Embryo[]       @relation("EmbryoPlannedRecipient")
+  transfers           Transfer[]
+  clearances          Clearance[]
+  lotsAsHorse         SaleLot[]      @relation("LotHorse")
+  lotsAsRecip         SaleLot[]      @relation("LotRecip")
+}
+
+// ───────────────────────────── Veterinary clearances ─────────────────────────────
+
+enum ClearanceKind {
+  COGGINS // EIA; required for travel (in-house lab, rapid option)
+  UTERINE_CULTURE // "cultured clean" before semen ships / before a transfer
+  UTERINE_CYTOLOGY
+  PRE_TRANSFER_EXAM // the vet's go/no-go on a set-up recip
+  VIDEO_IN_FOAL // leasing: video-confirmed in foal within three days of departure
+  RETURN_ASSESSMENT // the sale: a returned recip is open and in good health (CLEAR) or not
+}
+
+enum ClearanceResult {
+  CLEAR
+  ABNORMAL
+  PENDING // sample taken, result not back
+}
+
+// What the vet has established about a horse and when it stops being true. A transfer into a
+// recip without a current, clear pre-transfer exam is blocked by a rule, not by a reminder.
+model Clearance {
+  id           String          @id // CLR-26-0031
+  horseId      String
+  horse        Horse           @relation(fields: [horseId], references: [id])
+  kind         ClearanceKind
+  result       ClearanceResult
+  performedOn  DateTime
+  expiresOn    DateTime?
+  recordedById String?
+  note         String?
+  createdAt    DateTime        @default(now())
+
+  @@index([horseId, kind, performedOn])
+}
+
+enum RecipStatus {
+  AVAILABLE
+  SET_UP // synchronized for an upcoming transfer day
+  CARRYING // pregnant, in the herd
+  LEASED_OUT // left the farm with the client at ~day 24+
+  OPEN // transfer failed, cycling back
+  RETIRED
+}
+
+// ───────────────────────────── Contracts & semen ─────────────────────────────
+
+enum ContractType {
+  FRESH_COOLED
+  FROZEN
+  ICSI
+}
+
+enum ContractStatus {
+  RESERVED // slot held, nothing paid
+  DEPOSIT_PAID
+  SIGNED
+  PAID_IN_FULL // deposit + stud + chute all settled
+  SHIPPABLE // paid in full AND signed — semen may leave the building
+  CLOSED
+  CANCELLED
+}
+
+model Contract {
+  id             String         @id // SS-26-0533
+  season         Int
+  type           ContractType
+  status         ContractStatus @default(RESERVED)
+  customerId     String
+  customer       Customer       @relation(fields: [customerId], references: [id])
+  stallionId     String
+  stallion       Horse          @relation("ContractStallion", fields: [stallionId], references: [id])
+  mareId         String?
+  mare           Horse?         @relation("ContractMare", fields: [mareId], references: [id])
+  studFeeCents   Int
+  chuteFeeCents  Int
+  depositCents   Int
+  signedAt       DateTime?
+  esignEnvelopeId String? // simulated e-signature provider
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  semenOrders SemenOrder[]
+  aspirations Aspiration[]
+  embryos     Embryo[]
+  invoices    Invoice[]
+}
+
+enum SemenOrderStatus {
+  PLACED
+  HOLD_UNPAID // placed, but the contract is not paid in full → does not ship
+  SCHEDULED // on tomorrow's collection list
+  SHIPPED
+  CANCELLED
+}
+
+model SemenOrder {
+  id            String           @id // SO-26-0917
+  contractId    String
+  contract      Contract         @relation(fields: [contractId], references: [id])
+  mareId        String
+  mare          Horse            @relation(fields: [mareId], references: [id])
+  status        SemenOrderStatus @default(PLACED)
+  requestedFor  DateTime // the collection day the order is for (date only, barn TZ)
+  placedAt      DateTime
+  cancelledAt   DateTime?
+  shipToVet     String
+  shipToCity    String
+  container     String // e.g. "Equitainer", "Botu-Box"
+  notes         String?
+
+  @@index([requestedFor, status])
+}
+
+// ───────────────────────────── ICSI pipeline ─────────────────────────────
+
+model Aspiration {
+  id           String     @id // ASP-26-0211
+  donorMareId  String
+  donorMare    Horse      @relation(fields: [donorMareId], references: [id])
+  contractId   String?
+  contract     Contract?  @relation(fields: [contractId], references: [id])
+  performedOn  DateTime // aspiration days are Mondays
+  oocyteCount  Int
+  labBatchId   String?
+  labBatch     LabBatch?  @relation(fields: [labBatchId], references: [id])
+  embryos      Embryo[]
+}
+
+enum LabBatchStatus {
+  SHIPPED // oocytes left for the outside ICSI lab
+  IN_PROGRESS
+  RESULTED // embryo count came back (day 7–10)
+}
+
+// The ICSI fertilization step happens at an outside laboratory in another state.
+// This prototype simulates that provider; see docs/ASSUMPTIONS.md.
+model LabBatch {
+  id               String         @id // LAB-26-0088
+  provider         String // "ICSI_LAB_SIM": the outside ICSI laboratory, simulated
+  status           LabBatchStatus @default(SHIPPED)
+  shippedOn        DateTime
+  expectedResultOn DateTime
+  resultReceivedOn DateTime?
+  embryoCount      Int?
+  notes            String?
+
+  aspirations Aspiration[]
+}
+
+enum EmbryoSource {
+  ICSI // produced from an aspiration through the lab
+  FLUSH // conventional embryo flush
+  SHIPPED_IN // arrived from an outside vet (the SMS intake path)
+}
+
+enum EmbryoStatus {
+  EXPECTED // announced by text, not yet here
+  IN_TRANSIT
+  ARRIVED
+  FROZEN // vitrified, in a tank
+  TRANSFERRED
+  PREGNANT
+  OPEN // transfer did not take
+  LOST // pregnancy lost after confirmation
+  FOALED
+}
+
+model Embryo {
+  id              String       @id // E-26-2041
+  source          EmbryoSource
+  status          EmbryoStatus
+  customerId      String
+  customer        Customer     @relation(fields: [customerId], references: [id])
+  contractId      String?
+  contract        Contract?    @relation(fields: [contractId], references: [id])
+  aspirationId    String?
+  aspiration      Aspiration?  @relation(fields: [aspirationId], references: [id])
+  sireId          String?
+  sire            Horse?       @relation("EmbryoSire", fields: [sireId], references: [id])
+  damId           String?
+  dam             Horse?       @relation("EmbryoDam", fields: [damId], references: [id])
+  // Free-text fallbacks for shipped-in embryos whose parents are not in our records.
+  sireName        String?
+  damName         String?
+  icsiOrOvulationOn DateTime?
+  expectedOn      DateTime? // "Tue by 1 PM"
+  arrivedAt       DateTime?
+  storageTank     String?
+  storageSlot     String?
+  sendingVet      String?
+  intakeMessageId String?
+  intakeMessage   Message?     @relation(fields: [intakeMessageId], references: [id])
+  // The recip the farm has set aside for this embryo before it arrives. Null on an expected
+  // embryo inside the transfer window is an operational exception, not a quiet default.
+  plannedRecipientId String?
+  plannedRecipient   Horse?    @relation("EmbryoPlannedRecipient", fields: [plannedRecipientId], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  transfers Transfer[]
+  invoices  Invoice[]
+
+  @@index([customerId, status])
+}
+
+model Transfer {
+  id          String   @id // TR-26-0512
+  embryoId    String
+  embryo      Embryo   @relation(fields: [embryoId], references: [id])
+  recipientId String
+  recipient   Horse    @relation(fields: [recipientId], references: [id])
+  performedOn DateTime
+  notes       String?
+
+  checks   PregnancyCheck[]
+  invoices Invoice[]
+
+  @@index([performedOn])
+}
+
+enum CheckResult {
+  HEARTBEAT // the day-24 milestone that starts the lease
+  PREGNANT
+  OPEN
+  LOST
+  UNCLEAR // recheck required; never a billing trigger
+}
+
+model PregnancyCheck {
+  id           String      @id // CHK-26-0912
+  transferId   String
+  transfer     Transfer    @relation(fields: [transferId], references: [id])
+  dayNumber    Int // 14, 24, 45, 55, 60, ...
+  performedOn  DateTime
+  result       CheckResult
+  recordedById String
+  recordedBy   User        @relation(fields: [recordedById], references: [id])
+  notes        String?
+  createdAt    DateTime    @default(now())
+
+  triggeredInvoices Invoice[]
+
+  @@index([transferId, dayNumber])
+}
+
+// ───────────────────────────── Money ─────────────────────────────
+
+enum InvoiceKind {
+  DEPOSIT
+  STUD_FEE
+  CHUTE_FEE
+  LEASE_FEE // due at the day-24 heartbeat
+  BOARD // $/day from the heartbeat until the mare leaves
+  ICSI_STALLION_FEE // due at the 45–60 day check
+  EMBRYO_PURCHASE // confirmed at 55 days
+  LATE_RETURN // recip not returned by the deadline
+  RECIP_DEPOSIT // $1,000 per recipient mare at reservation
+  IMPLANT_FEE // $1,000 per transfer attempt; the first is covered by the deposit
+  SALE_SETTLEMENT // a lot bought at the sale; papers are held until it clears
+  OTHER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  REFUNDED
+}
+
+model Invoice {
+  id                 String        @id // INV-26-1093
+  kind               InvoiceKind
+  status             InvoiceStatus @default(OPEN)
+  customerId         String
+  customer           Customer      @relation(fields: [customerId], references: [id])
+  contractId         String?
+  contract           Contract?     @relation(fields: [contractId], references: [id])
+  embryoId           String?
+  embryo             Embryo?       @relation(fields: [embryoId], references: [id])
+  transferId         String?
+  transfer           Transfer?     @relation(fields: [transferId], references: [id])
+  triggeredByCheckId String?
+  triggeredByCheck   PregnancyCheck? @relation(fields: [triggeredByCheckId], references: [id])
+  amountCents        Int
+  description        String
+  issuedOn           DateTime
+  dueOn              DateTime
+  stripeInvoiceId    String?       @unique
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  payments Payment[]
+  lot      SaleLot?
+
+  @@index([customerId, status])
+}
+
+enum PaymentMethod {
+  CARD
+  ACH
+  CHECK
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING // ACH: debit initiated, not yet settled
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  RETURNED // ACH: the bank pulled the debit back after it looked settled; never clears again
+}
+
+model Payment {
+  id                    String        @id // PAY-26-0451
+  invoiceId             String?
+  invoice               Invoice?      @relation(fields: [invoiceId], references: [id])
+  customerId            String
+  customer              Customer      @relation(fields: [customerId], references: [id])
+  method                PaymentMethod
+  status                PaymentStatus
+  amountCents           Int
+  refundedCents         Int           @default(0)
+  stripePaymentIntentId String?       @unique
+  stripeChargeId        String?       @unique
+  failureReason         String?
+  receivedAt            DateTime
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  refunds Refund[]
+}
+
+model Refund {
+  id             String   @id // REF-26-0031
+  paymentId      String
+  payment        Payment  @relation(fields: [paymentId], references: [id])
+  amountCents    Int
+  reason         String?
+  stripeRefundId String?  @unique
+  createdAt      DateTime @default(now())
+}
+
+// ───────────────────────────── Integrations ─────────────────────────────
+
+enum IntegrationProvider {
+  STRIPE
+  QBO
+  TWILIO
+  RESEND
+  LAB
+  AUCTION // the sale platform's vendor; results enter through the inbox and are translated
+}
+
+enum IntegrationEventStatus {
+  RECEIVED
+  PROCESSED
+  DUPLICATE
+  FAILED
+  IGNORED
+}
+
+// Write-once inbox for every inbound webhook. The unique (provider, externalId) index is the
+// real duplicate guard; queue job ids are only a second fence.
+model IntegrationEvent {
+  id            String                 @id @default(cuid())
+  provider      IntegrationProvider
+  externalId    String // evt_…, CloudEvent id, SM…
+  type          String
+  payload       Json
+  status        IntegrationEventStatus @default(RECEIVED)
+  error         String?
+  correlationId String?
+  // How many times the provider delivered this same event after the first. The unique
+  // index rejects the row; this counter is the visible proof that the redelivery happened.
+  duplicateDeliveries Int              @default(0)
+  receivedAt    DateTime               @default(now())
+  processedAt   DateTime?
+
+  @@unique([provider, externalId])
+  @@index([provider, status, receivedAt])
+}
+
+enum MappedEntityType {
+  CUSTOMER
+  INVOICE
+  PAYMENT
+  CREDIT
+  ITEM
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCED
+  FAILED
+  MISMATCH
+  ORPHANED
+}
+
+// One row per local entity that should exist in the accounting system.
+model AccountingMapping {
+  id           String           @id @default(cuid())
+  entityType   MappedEntityType
+  entityId     String
+  provider     IntegrationProvider @default(QBO)
+  externalId   String?
+  syncToken    String? // QBO optimistic-locking token
+  status       SyncStatus       @default(PENDING)
+  attempts     Int              @default(0)
+  lastError    String?
+  lastSyncedAt DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  syncAttempts  SyncAttempt[]
+  discrepancies Discrepancy[]
+
+  @@unique([entityType, entityId, provider])
+  @@index([status])
+}
+
+model SyncAttempt {
+  id         String            @id @default(cuid())
+  mappingId  String
+  mapping    AccountingMapping @relation(fields: [mappingId], references: [id])
+  startedAt  DateTime          @default(now())
+  finishedAt DateTime?
+  ok         Boolean?
+  httpStatus Int?
+  error      String?
+  remoteRequestId String? // intuit_tid — what support asks for
+  jobId      String?
+}
+
+enum DiscrepancyKind {
+  AMOUNT_MISMATCH
+  CUSTOMER_MISMATCH
+  MISSING_REMOTE
+  MISSING_LOCAL
+  UNLINKED_PAYMENT
+  SYNC_FAILED
+}
+
+enum DiscrepancyResolution {
+  REPUSH_LOCAL
+  ACCEPT_REMOTE
+  RETRY
+  IGNORE
+}
+
+// A place where two systems disagree about money. Always resolved by a person.
+model Discrepancy {
+  id           String                 @id @default(cuid())
+  kind         DiscrepancyKind
+  mappingId    String?
+  mapping      AccountingMapping?     @relation(fields: [mappingId], references: [id])
+  entityType   MappedEntityType
+  entityId     String
+  localValue   Json?
+  remoteValue  Json?
+  detectedAt   DateTime               @default(now())
+  resolvedAt   DateTime?
+  resolution   DiscrepancyResolution?
+  resolvedById String?
+  resolvedBy   User?                  @relation(fields: [resolvedById], references: [id])
+  note         String?
+
+  @@index([resolvedAt])
+}
+
+// OAuth state for the accounting connection. One row per realm (company file).
+// Sandbox tokens only in this prototype; production would encrypt these at rest.
+model AccountingConnection {
+  id               String   @id @default(cuid())
+  provider         IntegrationProvider @default(QBO)
+  realmId          String   @unique
+  accessToken      String
+  refreshToken     String
+  accessExpiresAt  DateTime
+  refreshExpiresAt DateTime
+  connectedAt      DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// Durable state for the accounting simulator: "what the books say" when no sandbox is
+// connected. Inspectable in the UI so a reviewer can see exactly what is being reconciled.
+model SimulatorRecord {
+  id         String   @id @default(cuid())
+  provider   IntegrationProvider
+  entityType String
+  externalId String
+  docNumber  String?
+  data       Json
+  updatedAt  DateTime @updatedAt
+
+  @@unique([provider, entityType, externalId])
+  @@index([provider, entityType, docNumber])
+}
+
+// ───────────────────────────── Messaging (intake + digests) ─────────────────────────────
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+enum MessageChannel {
+  SMS
+  EMAIL
+}
+
+enum MessageStatus {
+  RECEIVED
+  PARSED // fields extracted, waiting for a person
+  CONFIRMED // a person confirmed; records created; reply sent
+  REJECTED
+  QUEUED
+  SENT
+  FAILED
+}
+
+model Message {
+  id                String           @id @default(cuid())
+  direction         MessageDirection
+  channel           MessageChannel
+  status            MessageStatus
+  fromAddress       String
+  toAddress         String
+  body              String
+  parsed            Json? // IntakeParse from the domain layer
+  customerId        String?
+  customer          Customer?        @relation(fields: [customerId], references: [id])
+  providerMessageId String?          @unique
+  inReplyToId       String?
+  createdAt         DateTime         @default(now())
+  sentAt            DateTime?
+
+  embryos Embryo[]
+
+  @@index([direction, status, createdAt])
+}
+
+// ───────────────────────────── Requests to the team ─────────────────────────────
+
+enum RequestStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+model Request {
+  id          String        @id @default(cuid())
+  createdById String
+  createdBy   User          @relation(fields: [createdById], references: [id])
+  subject     String
+  body        String
+  evidenceIds String[]
+  status      RequestStatus @default(OPEN)
+  createdAt   DateTime      @default(now())
+}
+
+// ───────────────────────────── Ask (assistant) ─────────────────────────────
+
+model AskConversation {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  createdAt DateTime     @default(now())
+  messages  AskMessage[]
+}
+
+enum AskRole {
+  USER
+  ASSISTANT
+}
+
+model AskMessage {
+  id             String          @id @default(cuid())
+  conversationId String
+  conversation   AskConversation @relation(fields: [conversationId], references: [id])
+  role           AskRole
+  content        String // plain text as shown
+  structured     Json? // the validated AskAnswer (statements, abstentions, conflicts)
+  evidenceIds    String[]
+  toolCalls      Json?
+  model          String?
+  inputTokens    Int?
+  outputTokens   Int?
+  latencyMs      Int?
+  // Enough to reconstruct why an answer said what it said: which prompt, which tool
+  // contracts, and a hash of the record state the tools saw.
+  promptVersion  String?
+  toolVersions   Json?
+  contextVersion String?
+  servedFromCache Boolean        @default(false)
+  // Where the time went, stage by stage: the gate, the tools, the model, the verifier, the write. The flight recorder reads it.
+  phases         Json?
+  createdAt      DateTime        @default(now())
+
+  feedback AskFeedback[]
+}
+
+enum FeedbackRating {
+  UP
+  DOWN
+}
+
+// Feedback is the raw material for evals and memory. A DOWN with a correction can be
+// promoted into an EvalCase by a person; it is never silently applied.
+model AskFeedback {
+  id                  String         @id @default(cuid())
+  messageId           String
+  message             AskMessage     @relation(fields: [messageId], references: [id])
+  userId              String
+  user                User           @relation(fields: [userId], references: [id])
+  rating              FeedbackRating
+  correction          String?
+  promotedToEvalCaseId String?       @unique
+  promotedToEvalCase  EvalCase?      @relation(fields: [promotedToEvalCaseId], references: [id])
+  createdAt           DateTime       @default(now())
+}
+
+enum MemoryScope {
+  USER
+  ORG
+}
+
+enum MemorySource {
+  USER_STATED
+  CORRECTED
+  IMPORTED
+}
+
+// Explicit, inspectable memory. Nothing medical or financial is ever inferred.
+model AskMemory {
+  id        String       @id @default(cuid())
+  scope     MemoryScope
+  userId    String?
+  user      User?        @relation(fields: [userId], references: [id])
+  key       String
+  value     String
+  source    MemorySource
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  expiresAt DateTime?
+
+  @@unique([scope, userId, key])
+}
+
+// ───────────────────────────── Evals ─────────────────────────────
+
+enum EvalCategory {
+  GROUNDING
+  ABSTAIN
+  CONFLICT
+  PERMISSION
+  INJECTION
+  VETERINARY_BOUNDARY
+  FINANCIAL_BOUNDARY
+  STRUCTURE
+  TERMINOLOGY
+  MEMORY
+}
+
+enum EvalCaseSource {
+  AUTHORED
+  FROM_FEEDBACK
+}
+
+model EvalCase {
+  id        String         @id @default(cuid())
+  category  EvalCategory
+  actorRole Role
+  actorCustomerId String?
+  input     String
+  expected  Json // ExpectedBehavior from the domain layer
+  source    EvalCaseSource @default(AUTHORED)
+  enabled   Boolean        @default(true)
+  createdAt DateTime       @default(now())
+
+  results  EvalResult[]
+  feedback AskFeedback?
+}
+
+model EvalRun {
+  id        String       @id @default(cuid())
+  startedAt DateTime     @default(now())
+  finishedAt DateTime?
+  model     String
+  gitSha    String?
+  total     Int          @default(0)
+  passed    Int          @default(0)
+  costCents Int?
+  results   EvalResult[]
+}
+
+model EvalResult {
+  id       String   @id @default(cuid())
+  runId    String
+  run      EvalRun  @relation(fields: [runId], references: [id])
+  caseId   String
+  case     EvalCase @relation(fields: [caseId], references: [id])
+  passed   Boolean
+  score    Float?
+  actual   Json?
+  reason   String?
+  latencyMs Int?
+
+  @@index([runId])
+}
+
+// Human-readable codes are handed out from atomic per-prefix counters, never from row counts.
+model Sequence {
+  key   String @id // e.g. "INV-26", "PAY-26", "R"
+  value Int    @default(0)
+}
+
+// ───────────────────────────── Audit ─────────────────────────────
+
+enum AuditSource {
+  UI
+  API
+  WEBHOOK
+  JOB
+  AI
+  SEED
+  LAB
+}
+
+// Append-only. A database trigger (see migrations) rejects UPDATE and DELETE.
+model AuditEvent {
+  id            String      @id @default(cuid())
+  at            DateTime    @default(now())
+  actorId       String?
+  actorRole     String?
+  action        String // e.g. "check.recorded", "invoice.created", "discrepancy.resolved"
+  entityType    String
+  entityId      String
+  before        Json?
+  after         Json?
+  source        AuditSource
+  correlationId String?
+
+  @@index([entityType, entityId, at])
+  @@index([at])
+}
+
+// ───────────────────────────── Platform: events, jobs, exceptions ─────────────────────────────
+
+// The transactional outbox. A business fact is written here in the same transaction as the
+// row change that produced it; a publisher moves it to the queue afterwards. A commit can
+// therefore never be lost between the database and the queue.
+model DomainEvent {
+  id            String    @id @default(cuid())
+  aggregateType String // "Payment", "Embryo", "PregnancyCheck", ...
+  aggregateId   String
+  type          String // "PaymentSucceeded", "CheckRecorded", ...
+  payload       Json
+  occurredAt    DateTime  @default(now())
+  correlationId String?
+  causationId   String? // the event, job or request that caused this one
+  publishedAt   DateTime?
+  publishAttempts Int     @default(0)
+  lastError     String?
+
+  @@index([publishedAt, occurredAt])
+  @@index([aggregateType, aggregateId, occurredAt])
+  @@index([correlationId])
+}
+
+// One row per (consumer, event) that has run to completion. Inserted inside the consumer's
+// own transaction, so a redelivered event is acknowledged and skipped instead of re-applied.
+model ProcessedEvent {
+  consumer    String
+  eventId     String
+  processedAt DateTime @default(now())
+
+  @@id([consumer, eventId])
+}
+
+enum JobStatus {
+  QUEUED
+  ACTIVE
+  RETRYING
+  COMPLETED
+  DEAD
+}
+
+// The durable ledger of background work. BullMQ schedules; this table remembers. A job that
+// exhausts its attempts becomes DEAD and raises an operational exception; nothing is lost
+// silently, in either queue mode.
+model JobRecord {
+  id            String    @id // the queue job id, e.g. qbo_INVOICE_INV-26-0041_paid
+  queue         String
+  payload       Json
+  status        JobStatus @default(QUEUED)
+  attempts      Int       @default(0)
+  maxAttempts   Int
+  lastError     String?
+  correlationId String?
+  causationId   String?
+  createdAt     DateTime  @default(now())
+  enqueuedAt    DateTime? // handed to BullMQ (or run inline); null means the safety net must pick it up
+  startedAt     DateTime?
+  nextRunAt     DateTime? // inline mode: when the next attempt is due
+  finishedAt    DateTime?
+  deadLetteredAt DateTime? // set when the job died; kept through a retry so recovery can be announced
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([queue, status])
+  @@index([correlationId])
+}
+
+// ───────────────────────────── The sale: settlement and papers ─────────────────────────────
+//
+// FACT (the sale's published conditions): settlement is due the Monday after the sale, 5 PM CST;
+// registration certificates are held until payment clears and are never released on sale day;
+// a recipient sold with a foal in utero comes back after weaning, open and in good health, or
+// the buyer owes a $6,000 recipient purchase fee. The sale platform itself is out of scope; what
+// it hands the office — a lot, an invoice, a payment in flight, a document to hold — is not.
+
+enum SaleLotKind {
+  HORSE
+  IN_UTERO // a recipient mare carrying a sold foal; she comes back after weaning
+}
+
+model SaleLot {
+  id          String      @id // LOT-26-0041
+  kind        SaleLotKind
+  title       String // synthetic: "Lot 41 · a yearling filly"
+  externalId  String?     @unique // the vendor's event id, so a redelivered result finds its lot
+  saleCode    String? // the vendor's sale, e.g. "FALL-26"
+  lotNumber   Int?
+  closedOn    DateTime
+  hammerCents Int
+  buyerId     String
+  buyer       Customer    @relation(fields: [buyerId], references: [id])
+  horseId     String?
+  horse       Horse?      @relation("LotHorse", fields: [horseId], references: [id])
+  recipId     String? // IN_UTERO: the recipient carrying the sold foal
+  recip       Horse?      @relation("LotRecip", fields: [recipId], references: [id])
+  invoiceId   String?     @unique
+  invoice     Invoice?    @relation(fields: [invoiceId], references: [id])
+  createdAt   DateTime    @default(now())
+
+  documents Document[]
+}
+
+enum DocumentKind {
+  REGISTRATION_CERTIFICATE
+}
+
+enum DocumentStatus {
+  HELD // funds not cleared
+  ELIGIBLE // the rule says it may go; a person still sends it
+  RELEASED // a person sent it, and the audit row says who
+}
+
+model Document {
+  id           String         @id // DOC-26-0001
+  kind         DocumentKind
+  status       DocumentStatus @default(HELD)
+  lotId        String
+  lot          SaleLot        @relation(fields: [lotId], references: [id])
+  eligibleAt   DateTime?
+  releasedAt   DateTime?
+  releasedById String?
+  note         String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([status])
+}
+
+enum ExceptionKind {
+  JOB_DEAD_LETTERED
+  WEBHOOK_FAILED
+  ACCOUNTING_SYNC_FAILED
+  RECONCILIATION_MISMATCH
+  INTEGRATION_DEGRADED
+  RECIPIENT_MISSING
+  RECIPIENT_CONFLICT
+  CLEARANCE_MISSING
+  CHECK_OVERDUE
+  SHIP_BLOCKED
+  INTAKE_UNCONFIRMED
+  CONFLICTING_RECORD
+  PAPERS_HELD // a sold lot's registration certificate waits on uncleared funds
+  SETTLEMENT_CONFLICT // the ledger and the payment provider disagree about the same money
+  RETURN_ASSESSMENT_MISSING // a recip sold in utero came back; the vet's assessment is not on record
+  DEPARTURE_UNCONFIRMED // a leased recip leaves within three days with no video confirmation in foal
+  RETURN_FEE_DECISION // the vet's record does not meet the sale condition, or the mare is overdue: a person decides the $6,000
+  PAPERS_RELEASED_FUNDS_RETURNED // the certificate went out, then the bank returned the money: a person, at once
+}
+
+enum ExceptionSeverity {
+  INFO
+  WARN
+  CRITICAL
+}
+
+enum ExceptionSource {
+  STRIPE
+  QBO
+  QUEUE
+  REPRODUCTION
+  VETERINARY
+  BILLING
+  RECONCILIATION
+  ASK
+}
+
+enum ExceptionStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  IGNORED
+}
+
+// One shape for "a person needs to look at this", whatever produced it. Deterministic
+// detectors raise these; people resolve them; the assistant may explain them but never
+// closes one. `openKey` is the dedupe key while the exception is open and null once it is
+// not, so re-running a detector cannot raise the same problem twice.
+model OperationalException {
+  id            String            @id // OX-26-0001
+  kind          ExceptionKind
+  severity      ExceptionSeverity
+  source        ExceptionSource
+  status        ExceptionStatus   @default(OPEN)
+  title         String
+  detail        Json?
+  entityType    String?
+  entityId      String?
+  dedupeKey     String
+  openKey       String?           @unique
+  correlationId String?
+  ownerId       String?
+  owner         User?             @relation("ExceptionOwner", fields: [ownerId], references: [id])
+  resolvedById  String?
+  resolvedBy    User?             @relation("ExceptionResolver", fields: [resolvedById], references: [id])
+  resolution    String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  acknowledgedAt DateTime?
+  resolvedAt    DateTime?
+
+  @@index([status, severity, createdAt])
+  @@index([entityType, entityId])
+  @@index([correlationId])
+}
+
+// ───────────────────────────── Proposals and settings ─────────────────────────────
+
+enum ProposalKind {
+  ASSIGN_PLANNED_RECIPIENT // set the recip the farm holds for an arriving embryo
+  REQUEST_VETERINARY_CONFIRMATION // ask the vet to examine and record; the assistant may prepare the request, never the result
+}
+
+enum ProposalStatus {
+  PROPOSED
+  APPROVED
+  DECLINED
+  STALE // approved after the records it was made from moved; nothing ran
+}
+
+// The assistant may propose; a person decides; the domain rules execute. A proposal is data
+// until someone with the right role approves it, and approval runs the same rule the UI
+// would, so an approved proposal that the rule refuses stays refused.
+model Proposal {
+  id             String         @id @default(cuid())
+  kind           ProposalKind
+  status         ProposalStatus @default(PROPOSED)
+  payload        Json
+  rationale      String
+  evidenceIds    String[]
+  proposedByUserId String
+  askMessageId   String?
+  stateHash      String? // what the executing rule read when this was proposed; approval refuses a proposal whose records moved
+  decidedById    String?
+  decidedAt      DateTime?
+  decision       String?
+  result         Json?
+  createdAt      DateTime       @default(now())
+
+  @@index([status, createdAt])
+}
+
+// The morning's ledger: what the board held at each hour, so "since yesterday" compares
+// against a recorded state rather than a memory. Written by the brief-snapshot job (one row
+// an hour, refreshed each quarter, one at boot); read by GET /operations/brief.
+model BriefSnapshot {
+  id           String   @id // brief_2026-09-19_07: the barn date and hour it stands for
+  takenAt      DateTime @default(now())
+  barnDate     String
+  trigger      String // sweep | boot
+  open         Int
+  atStakeCents Int
+  withStake    Int
+  bySource     Json
+  bySeverity   Json
+  openIds      Json
+
+  @@index([takenAt])
+}
+
+// Small, slow-changing facts about the deployment: which synthetic record the front door
+// tells the story of, and the like. Not configuration secrets.
+model Setting {
+  key   String @id
+  value Json
+}
