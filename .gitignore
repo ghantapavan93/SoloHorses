@@ -1,0 +1,37 @@
+node_modules/
+.pnpm-store/
+dist/
+build/
+# The honesty page is a route, not a build output.
+!apps/web/src/app/build/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+test-results/
+playwright-report/
+.turbo/
+generated/
+.claude/
+
+# design-pass screenshots
+.shots/
+# cached e2e sessions
+apps/web/e2e/.auth/
+# the last verify run's counts, read by the honesty page
+.verify/
+.verify-report.json
+.vitest/
+
+# Supplied reference prototypes carry names that never enter the product; they stay local.
+spade_control_prototype/
+
+# mutation testing: Stryker’s sandbox and its report
+.stryker-tmp/
+reports/

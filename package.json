@@ -1,0 +1,42 @@
+{
+  "name": "daysheet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unofficial candidate prototype: an operations backend for a performance-horse breeding business, with a Next.js harness UI, Stripe + QuickBooks reconciliation, an SMS intake loop, and a grounded AI assistant. All data synthetic.",
+  "license": "MIT",
+  "author": "Pavan Kalyan Ghanta",
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "dev": "concurrently -n domain,api,web -c cyan,magenta,green \"pnpm --filter @daysheet/domain dev\" \"pnpm --filter api start:dev\" \"pnpm --filter web dev\"",
+    "build": "pnpm -r --workspace-concurrency=1 build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter web test:e2e",
+    "eval": "pnpm --filter api eval",
+    "db:generate": "pnpm --filter @daysheet/db generate",
+    "db:migrate": "pnpm --filter @daysheet/db migrate",
+    "db:reset": "pnpm --filter @daysheet/db reset",
+    "db:seed": "pnpm --filter @daysheet/db seed",
+    "fuzz:api": "node scripts/fuzz-api.mjs",
+    "check:architecture": "depcruise --config .dependency-cruiser.cjs apps/api/src apps/web/src packages/domain/src packages/db/src",
+    "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm check:architecture && pnpm test && pnpm build",
+    "verify:report": "node scripts/verify-report.mjs",
+    "build:web": "pnpm --filter @daysheet/domain build && pnpm --filter web build",
+    "format": "prettier --write \"**/*.{ts,tsx,mjs,cjs,md,json,yml,yaml,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,mjs,cjs,md,json,yml,yaml,css}\"",
+    "demo:reset": "pnpm --filter @daysheet/db reset",
+    "check:copy": "node scripts/check-copy.mjs",
+    "film": "node scripts/film.mjs",
+    "check:licenses": "node scripts/check-licenses.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.5",
+    "dependency-cruiser": "^18.3.1",
+    "prettier": "3.9.7",
+    "typescript": "5.9.3"
+  }
+}

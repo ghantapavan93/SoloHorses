@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+**/.next
+.git
+.verify
+.shots
+test-results
+playwright-report
+apps/web/e2e/.auth
+.env
+.env.*
+!.env.example
+docs/*.gif

@@ -1,0 +1,41 @@
+packages:
+  - apps/*
+  - packages/*
+# Transitive packages with published advisories, pinned to the patched line until the parent
+# releases. multer sits under @nestjs/platform-express (no uploads here); mysql2 and
+# deepmerge-ts under the prisma CLI. decode-uri-component (moderate, under intuit-oauth's
+# query-string) is not pinned: its patched line is ESM-only and the CommonJS parent cannot
+# load it; it is recorded in docs/SECURITY.md and CI audits at the high level.
+overrides:
+  multer: '>=2.3.0'
+  mysql2: '>=3.23.1'
+  deepmerge-ts: '>=8.0.0'
+# Build scripts are opt-in in pnpm 12. @scarf/scarf is telemetry and stays off.
+allowBuilds:
+  '@parcel/watcher': true
+  '@prisma/engines': true
+  '@scarf/scarf': false
+  '@sentry/cli': true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - '@sentry/browser-utils@10.75.0'
+  - '@sentry/browser@10.75.0'
+  - '@sentry/core@10.75.0'
+  - '@sentry/feedback@10.75.0'
+  - '@sentry/nestjs@10.75.0'
+  - '@sentry/nextjs@10.75.0'
+  - '@sentry/node-core@10.75.0'
+  - '@sentry/node@10.75.0'
+  - '@sentry/opentelemetry@10.75.0'
+  - '@sentry/react@10.75.0'
+  - '@sentry/replay-canvas@10.75.0'
+  - '@sentry/replay@10.75.0'
+  - '@sentry/server-utils@10.75.0'
+  - '@sentry/vercel-edge@10.75.0'
+  - framer-motion@13.4.0
+  - jsdom@30.1.0
+  - motion@13.4.0
+  - prettier@3.9.7
