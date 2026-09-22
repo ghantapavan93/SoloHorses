@@ -33,6 +33,13 @@ describe("dates read in the barn's time zone wherever they are rendered", () => 
     expect(dayLong('2026-04-21T01:30:00.000Z')).toBe('Mon, Apr 20, 2026');
     expect(barnDate('2026-04-21T01:30:00.000Z')).toBe('2026-04-20');
     expect(barnDate('2026-04-20')).toBe('2026-04-20');
+  });
+
+  it('reads a barn date as the calendar day it names, wherever the process runs', () => {
+    // Parsed as local midnight, a UTC server would print the evening before in the barn's zone.
+    expect(day('2026-04-20')).toBe('Apr 20');
+    expect(dayLong('2026-04-20')).toBe('Mon, Apr 20, 2026');
+    expect(day('2026-03-10')).toBe('Mar 10');
     expect(dateTime(null)).toBe('—');
   });
 });

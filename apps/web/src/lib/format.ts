@@ -21,6 +21,15 @@ const BARN_DATE = new Intl.DateTimeFormat('en-CA', {
 /** Newer ICU puts a narrow no-break space before AM/PM; a plain space reads the same and diffs the same everywhere. */
 const plain = (text: string) => text.replace(/ /g, ' ');
 
+/**
+ * A barn date (`YYYY-MM-DD`) names a calendar day, not an instant. Parsed as local midnight it
+ * would land on the evening before in the barn's zone wherever the process runs east of it —
+ * Vercel's UTC server printed Apr 19 for the 20th and the browser disagreed at hydration. Noon
+ * UTC on that day is the same calendar day in the barn, whatever the clock.
+ */
+const instant = (iso: string): Date =>
+  /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00.000Z`) : parseISO(iso);
+
 export function usd(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) return '—';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(
@@ -30,27 +39,27 @@ export function usd(cents: number | null | undefined): string {
 
 export function day(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return plain(DAY.format(parseISO(iso)));
+  return plain(DAY.format(instant(iso)));
 }
 
 export function dayLong(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return plain(DAY_LONG.format(parseISO(iso)));
+  return plain(DAY_LONG.format(instant(iso)));
 }
 
 export function dateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return plain(DATE_TIME.format(parseISO(iso)));
+  return plain(DATE_TIME.format(instant(iso)));
 }
 
 /** The barn's calendar date for an instant, `YYYY-MM-DD`: the day the operation would write on the record. */
 export function barnDate(iso: string): string {
-  return BARN_DATE.format(parseISO(iso));
+  return BARN_DATE.format(instant(iso));
 }
 
 export function ago(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return formatDistanceToNowStrict(parseISO(iso), { addSuffix: true });
+  return formatDistanceToNowStrict(instant(iso), { addSuffix: true });
 }
 
 export function label(value: string | null | undefined): string {
