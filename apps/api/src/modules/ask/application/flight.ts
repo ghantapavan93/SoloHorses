@@ -71,7 +71,7 @@ export interface FlightInput {
   promptVersion: string | null;
   contextVersion: string | null;
   tokens: { input: number | null; output: number | null };
-  phases: Record<string, number | boolean> | null;
+  phases: Record<string, number | boolean | string> | null;
   toolCalls: {
     name: string;
     input: unknown;
@@ -117,6 +117,10 @@ const number = (phases: FlightInput['phases'], key: string): number | null => {
 const flag = (phases: FlightInput['phases'], key: string): boolean | null => {
   const value = phases?.[key];
   return typeof value === 'boolean' ? value : null;
+};
+const text = (phases: FlightInput['phases'], key: string): string | null => {
+  const value = phases?.[key];
+  return typeof value === 'string' && value.length > 0 ? value : null;
 };
 const PROVIDER_DETERMINISTIC = new Set(['offline', 'offline-deterministic', 'capped', 'cache']);
 
@@ -235,12 +239,33 @@ export function flightRecord(input: FlightInput): FlightRecord {
       redactions: 0,
     });
   } else if (!gateRefused && phases !== null) {
+    const fallbackFrom = text(phases, 'fallbackFrom');
+    if (fallbackFrom) {
+      // The model was tried first and did not answer; that turn is a step of its own, failed.
+      const detail = text(phases, 'fallbackDetail') ?? text(phases, 'fallbackReason') ?? 'did not answer';
+      push({
+        name: 'model explanation',
+        kind: 'model',
+        durationMs: Math.max(0, modelMs ?? 0),
+        status: 'failed',
+        summary: `${fallbackFrom} · ${detail}`,
+        provenance: blank({
+          tool: fallbackFrom,
+          rule: input.promptVersion ? `prompt ${input.promptVersion}` : null,
+          stateHash: input.contextVersion,
+          error: detail,
+        }),
+        redactions: 0,
+      });
+    }
     push({
       name: 'deterministic composer',
       kind: 'model',
-      durationMs: Math.max(0, modelMs ?? 0),
+      durationMs: fallbackFrom ? 0 : Math.max(0, modelMs ?? 0),
       status: 'ok',
-      summary: 'no model: the answer was composed from the tools in code',
+      summary: fallbackFrom
+        ? 'the model was away: the answer was composed from the tools in code'
+        : 'no model: the answer was composed from the tools in code',
       provenance: blank({ tool: 'OfflineAnswerer', stateHash: input.contextVersion }),
       redactions: 0,
     });

@@ -7,9 +7,10 @@ import { StatusPill } from '@/components/ui/status-pill';
 import { Reveal, Stagger, StaggerItem } from '@/components/motion/reveal';
 import { dateTime, label } from '@/lib/format';
 import { BuildHealthPanel } from '@/components/honesty/build-health';
+import { DeploymentHealth } from '@/components/honesty/deployment-health';
 import { EstateMap } from '@/components/honesty/estate-map';
 import { Gauntlet } from '@/components/honesty/gauntlet';
-import type { AskStatus, BuildHealth, EvalCase, EvalRun, Health, LabStatus } from '@/lib/types';
+import type { DependencyReadout, AskStatus, BuildHealth, EvalCase, EvalRun, Health, LabStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 export const metadata = { title: 'What is real, simulated, probably wrong' };
@@ -18,7 +19,7 @@ export const dynamic = 'force-dynamic';
 /** Each line names one thing and says which side of the line it sits on. */
 const REAL = [
   'The PostgreSQL schema, the append-only audit rows (a database trigger refuses updates and deletes), the atomic code sequence and integer-cent money.',
-  'The transactional outbox, idempotent consumers, the durable job ledger with retries and dead letters, the circuit breaker per dependency, per-endpoint rate limits and event-invalidated caches. All of it runs against a real database and a real Redis.',
+  'The transactional outbox, idempotent consumers, the durable job ledger with retries and dead letters, the circuit breaker per dependency, per-endpoint rate limits and event-invalidated caches. All of it runs against a real database; the ledger is the queue, and Redis, when one is configured, only accelerates it — the free deployment runs the same jobs inline from the ledger.',
   'The deterministic rules: transfer clearance, recipient availability, semen cutoffs, milestone billing — and the sale’s and the lease’s published conditions: papers held until funds clear (an initiated ACH is not cleared funds), a video confirmation within three days of a mare leaving, a vet’s return assessment before anyone decides a $6,000 fee. Pure functions with tests; the assistant can quote them but cannot override them.',
   'Operational exceptions raised by detectors and by failures, with a correlation id from the click to the row that failed.',
   'Stripe in test mode: real test-mode webhooks, signature checks, the inbox that rejects a duplicate delivery. Only when a test key is configured; otherwise the same inbox receives simulated deliveries.',
@@ -277,9 +278,16 @@ function EvalScorecard({ byCategory, latest }: { byCategory: Record<string, Eval
   );
 }
 
+/** The web's own line in the readout: the commit it runs and the platform it runs on, from the platform's own variables. */
+function frontendRow(): { note: string; state: 'HEALTHY' | 'NONE' } {
+  const commit = (process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GIT_SHA ?? '').slice(0, 7);
+  const where = process.env.VERCEL ? `Vercel · ${process.env.VERCEL_REGION ?? 'region unknown'}` : 'this machine';
+  return { note: `${where}${commit ? ` · ${commit}` : ''}`, state: process.env.VERCEL ? 'HEALTHY' : 'NONE' };
+}
+
 export default async function BuildPage() {
   const reviewer = { allowReviewer: true } as const;
-  const [session, health, cases, runs, theme, build, lab, askStatus] = await Promise.all([
+  const [session, health, cases, runs, theme, build, lab, askStatus, dependencies] = await Promise.all([
     auth(),
     apiFetchOrNull<Health>('/health', reviewer),
     apiFetchOrNull<EvalCase[]>('/evals/cases', reviewer),
@@ -288,6 +296,7 @@ export default async function BuildPage() {
     apiFetchOrNull<BuildHealth>('/health/build', reviewer),
     apiFetchOrNull<LabStatus>('/lab/status', reviewer),
     apiFetchOrNull<AskStatus>('/ask/status', reviewer),
+    apiFetchOrNull<DependencyReadout>('/health/dependencies', reviewer),
   ]);
   const enabled = (cases ?? []).filter((c) => c.enabled);
   const byCategory = enabled.reduce<Record<string, EvalCase[]>>((acc, c) => {
@@ -370,6 +379,9 @@ export default async function BuildPage() {
         <h2 className="text-[14px] font-semibold">Right now, in this environment</h2>
         <div className="mt-3">
           <BuildHealthPanel health={build} lab={lab} ask={askStatus} signedIn={signedIn} />
+        </div>
+        <div className="mt-3">
+          <DeploymentHealth readout={dependencies} frontend={frontendRow()} />
         </div>
       </section>
 

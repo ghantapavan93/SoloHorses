@@ -35,6 +35,7 @@ import {
 import {
   addUsage,
   AnthropicModel,
+  type ModelTurn,
   OllamaModel,
   OpenAiCompatibleModel,
   probeOllama,
@@ -45,8 +46,9 @@ import {
   type ToolResult,
 } from './model-port';
 import { buildCard, type AnswerCard, type CardHints } from './card';
-import { flightRecord, type FlightInput, type FlightRecord } from './flight';
+import { flightRecord, redact, type FlightInput, type FlightRecord } from './flight';
 import { OfflineAnswerer } from './offline-answerer';
+import { HealthRegistry, type DependencyRow } from '../../../platform/observability/health.registry';
 import { refusedCapabilityFor, screenQuestion } from './policy';
 import { combineVersions, hash } from './projection';
 import {
@@ -120,6 +122,9 @@ export const ANTHROPIC_CLIENT = Symbol('ANTHROPIC_CLIENT');
 export type { ModelClient } from './model-port';
 
 const MAX_TOOL_ROUNDS = 6;
+/** A provider's error in a log line: never a key, never a number that looks like a card. */
+const redactForLog = (message: string): string =>
+  redact(message.replace(/(bearer|api[_-]?key[=: ]|key=)\s*\S+/gi, '$1 …')).text.slice(0, 200);
 
 /** "hi", "ok", "thanks": a line back, no tools, no row. Anything with a record, a question mark or more than three words is a question. */
 function smallTalkReply(question: string): string | null {
@@ -172,6 +177,7 @@ export class AskService implements OnModuleInit {
     private readonly requests: RequestsService,
     private readonly checkpointer: ReviewCheckpointer,
     private readonly dispatcher: EventDispatcher,
+    private readonly health: HealthRegistry,
     @Optional() @Inject(ANTHROPIC_CLIENT) injectedClient?: ModelClient,
   ) {
     const { ANTHROPIC_API_KEY: key, ANTHROPIC_MODEL: model, ASK_PROVIDER: provider } = envService.env;
@@ -197,8 +203,14 @@ export class AskService implements OnModuleInit {
     return this.port?.provider ?? 'offline';
   }
 
+  /** The last model turn this process made: when, whether it answered, how long. The readout shows it. */
+  private lastTurn: { at: string; ok: boolean; ms: number; detail: string | null } | null = null;
+  private fallbacks = 0;
+
   async onModuleInit(): Promise<void> {
     await this.connectRemote();
+    // The dependency readout: the model row from the service that owns it, the composer beside it.
+    this.health.register('model', () => Promise.resolve(this.dependencyRows()));
     // A person decided on a proposal: the paused review thread continues to its audit row.
     this.dispatcher.register({
       name: 'ask.review-resume',
@@ -213,6 +225,27 @@ export class AskService implements OnModuleInit {
           this.logger.log(`proposal ${proposalId}: review thread ${askMessageId} was not waiting; nothing to resume`);
       },
     });
+  }
+
+  private dependencyRows(): DependencyRow[] {
+    const last = this.lastTurn
+      ? ` · last turn ${this.lastTurn.ok ? 'answered' : 'failed'} in ${this.lastTurn.ms} ms${this.lastTurn.detail ? ` (${this.lastTurn.detail})` : ''}`
+      : ' · no turn yet';
+    const model = this.port
+      ? {
+          name: 'Model',
+          state: (this.lastTurn && !this.lastTurn.ok ? 'DEGRADED' : 'HEALTHY') as DependencyRow['state'],
+          note: `${this.port.provider} · ${this.port.model}${last}`,
+        }
+      : { name: 'Model', state: 'NONE' as const, note: 'none configured · the deterministic composer answers' };
+    return [
+      model,
+      {
+        name: 'Fallback',
+        state: 'HEALTHY' as const,
+        note: `deterministic composer ready${this.fallbacks > 0 ? ` · used ${this.fallbacks} time${this.fallbacks === 1 ? '' : 's'} since boot` : ''}`,
+      },
+    ];
   }
 
   /**
@@ -239,7 +272,7 @@ export class AskService implements OnModuleInit {
     if ((provider === 'openai' || provider === 'auto') && hosted.baseUrl && hosted.apiKey && hosted.model) {
       const probe = await probeOpenAiCompatible(hosted.baseUrl, hosted.apiKey);
       if (probe.ok) {
-        this.port = new OpenAiCompatibleModel(hosted);
+        this.port = new OpenAiCompatibleModel({ ...hosted, timeoutMs: env.ASK_MODEL_TIMEOUT_MS });
         this.logger.log(
           `Ask answers on a hosted model: ${hosted.model} at ${hosted.baseUrl} (tool calls, then a JSON answer).`,
         );
@@ -258,7 +291,12 @@ export class AskService implements OnModuleInit {
       this.logger.warn(`Ollama not used (${probe.reason}) — Ask answers offline with the deterministic answerer.`);
       return;
     }
-    this.port = new OllamaModel({ url: env.OLLAMA_URL, model: env.OLLAMA_MODEL, numCtx: env.OLLAMA_NUM_CTX });
+    this.port = new OllamaModel({
+      url: env.OLLAMA_URL,
+      model: env.OLLAMA_MODEL,
+      numCtx: env.OLLAMA_NUM_CTX,
+      timeoutMs: env.ASK_MODEL_TIMEOUT_MS,
+    });
     this.logger.log(
       `Ask answers on a local model: ${env.OLLAMA_MODEL} at ${env.OLLAMA_URL} (free; tool calls, then a schema-constrained answer).`,
     );
@@ -414,39 +452,8 @@ export class AskService implements OnModuleInit {
         contextVersion: t.contextVersion,
       }));
 
-    if (!this.port) {
-      // No model: the same tools, a deterministic composer, the same answer shape — and the same verifier.
-      const storyRecipId =
-        ((await this.db.setting.findUnique({ where: { key: 'story' } }))?.value as { recipId?: string } | null)
-          ?.recipId ?? null;
-      const offline = await new OfflineAnswerer(this.tools).answer(actor, question, {
-        storyRecipId,
-        subjectId: input.subjectId,
-      });
-      for (const record of offline.toolCalls)
-        emit({
-          type: 'tool',
-          name: record.name,
-          input: record.input,
-          ok: record.ok,
-          idsReturned: record.idsReturned,
-          durationMs: record.durationMs,
-        });
-      const toolsMs = offline.toolCalls.reduce((sum, t) => sum + t.durationMs, 0);
-      return {
-        answer: offline.answer,
-        toolCalls: toRecords(offline.toolCalls),
-        seenIds: offline.toolCalls.flatMap((t) => t.idsReturned),
-        proposalIds: offline.proposalIds,
-        usage: none,
-        phases: { toolsMs, modelMs: 0 },
-        investigation: offline.investigation ?? null,
-        hints: offline.hints ?? null,
-        model: offline.handled ? 'offline-deterministic' : 'offline',
-        contextVersion: combineVersions(offline.toolCalls.map((t) => t.contextVersion ?? 'error')),
-        servedFromCache: false,
-      };
-    }
+    // No model: the same tools, a deterministic composer, the same answer shape — and the same verifier.
+    if (!this.port) return this.composeOffline(input, emit, null);
 
     if (this.port.costsMoney) {
       const cap = await this.checkSpendCap();
@@ -464,6 +471,7 @@ export class AskService implements OnModuleInit {
           model: 'capped',
           contextVersion: null,
           servedFromCache: false,
+          fallback: null,
         };
       }
     }
@@ -499,6 +507,7 @@ export class AskService implements OnModuleInit {
             model: this.model,
             contextVersion: cached.contextVersion,
             servedFromCache: true,
+            fallback: null,
           };
         }
         await this.cache.invalidate(cacheKey); // the world moved on; the old answer must not be served again
@@ -551,8 +560,29 @@ export class AskService implements OnModuleInit {
     const system = this.port.provider === 'anthropic' ? STABLE_INSTRUCTIONS : LOCAL_INSTRUCTIONS;
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
       const turnStarted = Date.now();
-      const turn = await this.port.turn({ system, messages, tools: TOOL_DEFINITIONS });
+      let turn: ModelTurn;
+      try {
+        turn = await this.port.turn({ system, messages, tools: TOOL_DEFINITIONS });
+      } catch (error) {
+        // The model is away — a timeout, a refused connection, a provider's 5xx. The answer does not
+        // wait on it: the deterministic composer reads the same tools, and the run says what happened.
+        const ms = Date.now() - turnStarted;
+        const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+        const detail = redactForLog((error as Error).message ?? String(error));
+        this.lastTurn = { at: new Date().toISOString(), ok: false, ms, detail };
+        this.fallbacks += 1;
+        this.logger.warn(
+          `${this.port.model} ${timedOut ? `did not answer within ${ms} ms` : `failed: ${detail}`} — the deterministic composer answers.`,
+        );
+        return this.composeOffline(input, emit, {
+          from: this.model,
+          reason: timedOut ? 'timeout' : 'error',
+          detail: timedOut ? `no answer within ${ms} ms` : detail,
+          modelMs: modelMs + ms,
+        });
+      }
       modelMs += Date.now() - turnStarted;
+      this.lastTurn = { at: new Date().toISOString(), ok: true, ms: Date.now() - turnStarted, detail: null };
       usage = addUsage(usage, turn.usage);
 
       if (turn.stop === 'refusal') {
@@ -632,6 +662,58 @@ export class AskService implements OnModuleInit {
       model: this.model,
       contextVersion: combineVersions(toolCalls.map((t) => t.contextVersion ?? 'error')),
       servedFromCache: false,
+      fallback: null,
+    };
+  }
+
+  /**
+   * The deterministic composer: the same typed tools, an answer in the same shape, the same
+   * verifier after it. It is the answer when no model is configured, and the answer when the
+   * model is away — with the run recording which model was tried, and why it did not answer.
+   */
+  private async composeOffline(
+    input: ReviewInput,
+    emit: (chunk: ReviewChunk) => void,
+    fallback: Composition['fallback'],
+  ): Promise<Composition> {
+    const { actor, question } = input;
+    const storyRecipId =
+      ((await this.db.setting.findUnique({ where: { key: 'story' } }))?.value as { recipId?: string } | null)
+        ?.recipId ?? null;
+    const offline = await new OfflineAnswerer(this.tools).answer(actor, question, {
+      storyRecipId,
+      subjectId: input.subjectId,
+    });
+    for (const record of offline.toolCalls)
+      emit({
+        type: 'tool',
+        name: record.name,
+        input: record.input,
+        ok: record.ok,
+        idsReturned: record.idsReturned,
+        durationMs: record.durationMs,
+      });
+    const toolsMs = offline.toolCalls.reduce((sum, t) => sum + t.durationMs, 0);
+    return {
+      answer: offline.answer,
+      toolCalls: offline.toolCalls.map((t) => ({
+        name: t.name,
+        input: t.input,
+        ok: t.ok,
+        idsReturned: t.idsReturned,
+        durationMs: t.durationMs,
+        contextVersion: t.contextVersion,
+      })),
+      seenIds: offline.toolCalls.flatMap((t) => t.idsReturned),
+      proposalIds: offline.proposalIds,
+      usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 },
+      phases: { toolsMs, modelMs: fallback?.modelMs ?? 0 },
+      investigation: offline.investigation ?? null,
+      hints: offline.hints ?? null,
+      model: offline.handled ? 'offline-deterministic' : 'offline',
+      contextVersion: combineVersions(offline.toolCalls.map((t) => t.contextVersion ?? 'error')),
+      servedFromCache: false,
+      fallback,
     };
   }
 
@@ -667,6 +749,14 @@ export class AskService implements OnModuleInit {
       total: latencyMs,
       verified: verified.ok,
       rejected: verified.rejected,
+      // A model that was tried and did not answer: which, why, how long — the flight recorder shows it.
+      ...(composition.fallback
+        ? {
+            fallbackFrom: composition.fallback.from,
+            fallbackReason: composition.fallback.reason,
+            fallbackDetail: composition.fallback.detail,
+          }
+        : {}),
     };
     const saved = await this.db.askMessage.create({
       data: {
@@ -849,7 +939,7 @@ export class AskService implements OnModuleInit {
       promptVersion: row.promptVersion,
       contextVersion: row.contextVersion,
       tokens: { input: row.inputTokens, output: row.outputTokens },
-      phases: (row.phases ?? null) as Record<string, number | boolean> | null,
+      phases: (row.phases ?? null) as Record<string, number | boolean | string> | null,
       toolCalls: calls.map((c, i) => ({
         seq: i + 1,
         name: c.name,
@@ -921,7 +1011,7 @@ export class AskService implements OnModuleInit {
       promptVersion: row.promptVersion,
       contextVersion: row.contextVersion,
       tokens: { input: row.inputTokens, output: row.outputTokens },
-      phases: (row.phases ?? null) as Record<string, number | boolean> | null,
+      phases: (row.phases ?? null) as Record<string, number | boolean | string> | null,
       toolCalls: calls,
       answer: answer
         ? {

@@ -1,11 +1,16 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpCode, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Public } from '../security/jwt-auth.guard';
+import { Requires } from '../security/permission.guard';
 import { ClockService } from '../clock/clock.service';
 import { PrismaService } from '../persistence/prisma.service';
 import { EnvService } from '../config/env.module';
+import { OutboxService } from '../events/outbox.service';
+import { JobsService } from '../queue/jobs.service';
+import { HealthRegistry, type DependencyRow } from './health.registry';
 
 const ADVERSARIAL = new Set(['PERMISSION', 'INJECTION', 'VETERINARY_BOUNDARY', 'FINANCIAL_BOUNDARY']);
 
@@ -51,12 +56,18 @@ function runningCommit(): string | null {
   }
 }
 
+/** The first line of an error: enough to act on, never a connection string. */
+const firstLine = (error: unknown): string => ((error as Error).message ?? String(error)).split('\n')[0] ?? '';
+
 @Controller('health')
 export class HealthController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly clock: ClockService,
     private readonly envService: EnvService,
+    private readonly jobs: JobsService,
+    private readonly outbox: OutboxService,
+    private readonly registry: HealthRegistry,
   ) {}
 
   /**
@@ -67,6 +78,120 @@ export class HealthController {
   @Public()
   live() {
     return { ok: true, uptimeSec: Math.round(process.uptime()) };
+  }
+
+  /**
+   * Readiness: can this instance serve operational traffic? Only what operational truth needs —
+   * the database answering, the schema present, a seeded world — so a model that is away
+   * never makes the estate "not ready" while the deterministic composer can answer. 503 when
+   * not, so a platform or the web can read the status line alone.
+   */
+  @Get('ready')
+  @Public()
+  @HttpCode(200)
+  async ready(@Res({ passthrough: true }) res: Response) {
+    const started = Date.now();
+    const checks: Record<string, { ok: boolean; note: string; latencyMs?: number }> = {};
+    try {
+      await this.prisma.client.$queryRaw`SELECT 1`;
+      checks['database'] = { ok: true, note: 'answering', latencyMs: Date.now() - started };
+    } catch (error) {
+      checks['database'] = { ok: false, note: `not answering: ${firstLine(error)}` };
+    }
+    if (checks['database']?.ok) {
+      try {
+        // The schema is what the migrations made it; the seed stamp says a world is in it.
+        const seed = (await this.prisma.client.setting.findUnique({ where: { key: 'seed' } }))?.value as
+          { seededAt?: string } | null | undefined;
+        checks['schema'] = { ok: true, note: 'migrated' };
+        checks['world'] = seed?.seededAt
+          ? { ok: true, note: `seeded ${seed.seededAt}` }
+          : { ok: false, note: 'no seeded world yet' };
+      } catch (error) {
+        checks['schema'] = { ok: false, note: `not migrated: ${firstLine(error)}` };
+      }
+    }
+    const ok = Object.values(checks).every((c) => c.ok);
+    if (!ok) res.status(503);
+    return { ok, checks, uptimeSec: Math.round(process.uptime()) };
+  }
+
+  /**
+   * The dependency readout, for staff and the proof page: one row per thing the API leans on,
+   * each from the service that owns it, at this moment. DEGRADED is a state, not a failure to
+   * report; a green row is never written by hand.
+   */
+  @Get('dependencies')
+  @Requires('read', 'platform')
+  async dependencies() {
+    const rows: DependencyRow[] = [{ name: 'API', state: 'HEALTHY', note: `up ${Math.round(process.uptime())} s` }];
+    const dbStarted = Date.now();
+    const dbOk = await this.prisma.client.$queryRaw`SELECT 1`.then(
+      () => true,
+      () => false,
+    );
+    const dbMs = Date.now() - dbStarted;
+    rows.push(
+      dbOk
+        ? { name: 'Postgres', state: 'HEALTHY', note: `${dbMs} ms`, latencyMs: dbMs }
+        : { name: 'Postgres', state: 'DOWN', note: 'not answering' },
+    );
+    const jobs = await this.jobs.health().catch(() => null);
+    rows.push(
+      jobs === null
+        ? { name: 'Queue', state: 'DOWN', note: 'ledger not readable' }
+        : jobs.redis === 'unreachable'
+          ? { name: 'Queue', state: 'DEGRADED', note: 'Redis unreachable · jobs run inline from the ledger' }
+          : jobs.redis === 'connected'
+            ? { name: 'Queue', state: 'HEALTHY', note: 'BullMQ on Redis · the ledger first' }
+            : { name: 'Queue', state: 'HEALTHY', note: 'none configured · inline from the ledger, one process' },
+    );
+    const worker = this.jobs.workerHealth();
+    const flushAgo = worker.lastFlushAgeMs === null ? null : `${Math.round(worker.lastFlushAgeMs / 1000)} s ago`;
+    const requeued =
+      worker.interrupted > 0
+        ? ` · ${worker.interrupted} interrupted job${worker.interrupted === 1 ? '' : 's'} requeued`
+        : '';
+    rows.push(
+      jobs?.paused
+        ? { name: 'Worker', state: 'DEGRADED', note: 'paused from the lab' }
+        : flushAgo === null
+          ? { name: 'Worker', state: 'DEGRADED', note: 'no flush yet' }
+          : (worker.lastFlushAgeMs ?? 0) > 30_000
+            ? { name: 'Worker', state: 'DEGRADED', note: `last flush ${flushAgo}` }
+            : {
+                name: 'Worker',
+                state: 'HEALTHY',
+                note: `${jobs?.mode ?? 'inline'} · last flush ${flushAgo}${requeued}`,
+              },
+    );
+    rows.push(...(await this.registry.rows()));
+    const lag = dbOk ? await this.outbox.lag().catch(() => null) : null;
+    rows.push(
+      lag === null
+        ? { name: 'Outbox lag', state: 'DOWN', note: 'not readable' }
+        : lag.unpublished === 0
+          ? { name: 'Outbox lag', state: 'HEALTHY', note: '0' }
+          : (lag.oldestUnpublishedAgeMs ?? 0) > 30_000
+            ? {
+                name: 'Outbox lag',
+                state: 'DEGRADED',
+                note: `${lag.unpublished} unpublished · oldest ${Math.round((lag.oldestUnpublishedAgeMs ?? 0) / 1000)} s`,
+              }
+            : { name: 'Outbox lag', state: 'HEALTHY', note: `${lag.unpublished} in flight` },
+    );
+    const dead = dbOk
+      ? await this.prisma.client.jobRecord.count({ where: { status: 'DEAD' } }).catch(() => null)
+      : null;
+    rows.push(
+      dead === null
+        ? { name: 'Dead letters', state: 'DOWN', note: 'not readable' }
+        : dead === 0
+          ? { name: 'Dead letters', state: 'HEALTHY', note: '0' }
+          : { name: 'Dead letters', state: 'DEGRADED', note: `${dead} · each an open exception a person owns` },
+    );
+    rows.push({ name: 'Build', state: 'NONE', note: runningCommit() ?? 'unknown commit' });
+    return { rows, at: new Date().toISOString() };
   }
 
   @Get()

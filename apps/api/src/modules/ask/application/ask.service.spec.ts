@@ -130,3 +130,66 @@ describe('AskService with a scripted model', () => {
     expect(result).toMatchObject({ error: 'INVALID_INPUT' });
   });
 });
+
+/** A model that is away: every turn times out, the way a hosted provider does when the network is not there. */
+function absentClient(): ModelClient {
+  const parse = (): Promise<unknown> => {
+    const error = new Error('The operation was aborted due to timeout');
+    error.name = 'TimeoutError';
+    return Promise.reject(error);
+  };
+  return { messages: { parse } as unknown as Anthropic['messages'] };
+}
+
+describe('AskService when the model is away', () => {
+  const modules: TestingModule[] = [];
+  let prisma: PrismaService;
+  let ask: AskService;
+  let admin: { userId: string; role: 'ADMIN'; customerId: null };
+  let recipId: string;
+
+  beforeAll(async () => {
+    const probe = await tracked(createTestModule({ imports: [ReproductionModule] }));
+    prisma = probe.get(PrismaService);
+    const adminUser = await prisma.client.user.findFirstOrThrow({ where: { role: 'ADMIN' } });
+    admin = { userId: adminUser.id, role: 'ADMIN', customerId: null };
+    recipId =
+      ((await prisma.client.setting.findUnique({ where: { key: 'story' } }))?.value as { recipId?: string } | null)
+        ?.recipId ?? (await prisma.client.horse.findFirstOrThrow({ where: { kind: 'RECIPIENT' } })).id;
+    const moduleRef = await tracked(
+      createTestModule({
+        imports: [ReproductionModule, OperationsModule, BillingModule, AccountingModule],
+        providers: [ReviewCheckpointer, AskTools, AskService, { provide: ANTHROPIC_CLIENT, useValue: absentClient() }],
+      }),
+    );
+    ask = moduleRef.get(AskService);
+  });
+
+  afterAll(async () => {
+    await Promise.all(modules.map((m) => m.close()));
+  });
+
+  async function tracked(pending: Promise<TestingModule>): Promise<TestingModule> {
+    const m = await pending;
+    modules.push(m);
+    return m;
+  }
+
+  it('answers from the deterministic composer, verified, and the run says which model was tried and why it did not answer', async () => {
+    const { answer, messageId } = await ask.askOnce(admin, `Why can't ${recipId} leave?`);
+    // A valid answer in the same shape: statements or abstentions, never an error.
+    expect(answer.statements.length + answer.abstentions.length).toBeGreaterThan(0);
+
+    const saved = await prisma.client.askMessage.findUniqueOrThrow({ where: { id: messageId } });
+    expect(saved.model).toMatch(/^offline/);
+    const phases = saved.phases as Record<string, unknown>;
+    expect(phases['fallbackFrom']).toBe('claude-opus-5');
+    expect(phases['fallbackReason']).toBe('timeout');
+
+    const record = await ask.flight(admin, messageId);
+    const names = record?.steps.map((s) => `${s.name}:${s.status}`) ?? [];
+    expect(names).toContain('model explanation:failed');
+    expect(names.indexOf('model explanation:failed')).toBeLessThan(names.indexOf('deterministic composer:ok'));
+    expect(record?.steps.find((s) => s.name === 'verifier')?.status).toBe('ok');
+  });
+});

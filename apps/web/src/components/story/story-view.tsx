@@ -58,6 +58,7 @@ const KIND_RULE: Record<string, string> = {
   RECIPIENT_MISSING: 'An embryo inside the transfer window needs a recip set aside',
   ACCOUNTING_SYNC_FAILED: 'Retries stop; the failure becomes a person’s problem, not a log line',
   INTEGRATION_DEGRADED: 'A dependency that keeps failing is fenced off until one probe succeeds',
+  DELIVERY_UNKNOWN: 'A message the provider may have sent is not sent again until a person has checked',
 };
 
 /**

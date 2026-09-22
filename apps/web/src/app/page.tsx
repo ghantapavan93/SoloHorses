@@ -499,6 +499,9 @@ export default async function LandingPage() {
                 </li>
               ))}
             </ul>
+            <p className="mt-4 text-[11.5px] text-muted-foreground" data-testid="free-tier-note">
+              Built entirely on free-tier infrastructure. First load may take a moment while the demo wakes up.
+            </p>
           </Reveal>
         </section>
 

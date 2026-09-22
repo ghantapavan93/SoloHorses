@@ -4,6 +4,7 @@
  */
 import type { TestingModule } from '@nestjs/testing';
 import { createTestModule } from '../../test-support/module';
+import { PrismaService } from '../persistence/prisma.service';
 import { CacheService } from './cache.service';
 
 describe('CacheService', () => {
@@ -44,5 +45,31 @@ describe('CacheService', () => {
     const other = await cache.wrap(key, 5_000, () => Promise.resolve({ n: 2 }), 'v2');
     expect(other.cached).toBe(false);
     expect(other.value.n).toBe(2);
+  });
+
+  it('makes every entry from the previous world unreachable when the seed stamp changes', async () => {
+    const prisma = moduleRef.get(PrismaService);
+    const key = `spec:cache:world:${Date.now()}`;
+    expect(cache.generation).not.toBe('unseeded');
+    await cache.set(key, { world: 'before' }, 60_000);
+    expect((await cache.get<{ world: string }>(key))?.value.world).toBe('before');
+
+    // A reseed writes a new stamp; the service notices on its next look.
+    const row = await prisma.client.setting.findUniqueOrThrow({ where: { key: 'seed' } });
+    const stamp = row.value as { seededAt?: string };
+    const before = cache.generation;
+    try {
+      await prisma.client.setting.update({
+        where: { key: 'seed' },
+        data: { value: { ...stamp, seededAt: new Date(Date.now() + 60_000).toISOString() } },
+      });
+      const { changed } = await cache.refreshGeneration();
+      expect(changed).toBe(true);
+      expect(cache.generation).not.toBe(before);
+      expect(await cache.get(key)).toBeNull();
+    } finally {
+      await prisma.client.setting.update({ where: { key: 'seed' }, data: { value: stamp } });
+      await cache.refreshGeneration();
+    }
   });
 });

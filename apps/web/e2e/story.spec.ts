@@ -19,7 +19,8 @@ test.describe('one mare, every handoff', () => {
     await expect(page.getByRole('heading', { name: /What needs a person/ })).toBeVisible();
     await page.getByRole('link', { name: /See one mare’s story/ }).click();
     await expect(page).toHaveURL(/\/story$/);
-    await expect(page.getByRole('heading', { level: 1 })).toContainText(/R-\d{4}/);
+    // The story streams in behind its skeleton; under a full parallel run on a laptop the records take a few seconds.
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(/R-\d{4}/, { timeout: 15_000 });
   });
 
   test('the front door’s assistant is the real one, not a script', async ({ page }) => {

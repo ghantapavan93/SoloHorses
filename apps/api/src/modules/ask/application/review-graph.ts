@@ -65,6 +65,8 @@ export interface Composition {
   servedFromCache: boolean;
   /** Where compose's time went: the tools' round trips and the model's turns. */
   phases: { toolsMs: number; modelMs: number };
+  /** The model was tried and could not answer; the deterministic composer did. The run records it. */
+  fallback: { from: string; reason: 'timeout' | 'error'; detail: string; modelMs: number } | null;
   /** The typed result of an x-ray read during composition, when there was one. */
   investigation: Investigation | null;
   /** What the composer knows for the card that the tools' records do not say: a sentence, facts, rows, the view. */
@@ -228,6 +230,7 @@ export class ExceptionReviewGraph {
               phases: { toolsMs: 0, modelMs: 0 },
               investigation: null,
               hints: null,
+              fallback: null,
             },
             timings: { ...state.timings, verify: Date.now() - t0 },
           };

@@ -54,6 +54,29 @@ export class OperationsConsumers implements OnModuleInit {
     this.jobs.register('brief-snapshot', ({ trigger }) => this.brief.snapshot(trigger).then(() => undefined));
 
     this.dispatcher.register({
+      name: 'operations.delivery-unknown',
+      events: ['MessageDeliveryUnknown'],
+      handle: async (
+        event: DomainEventRecord<{ messageId: string; channel: string; error: string }>,
+        tx: Prisma.TransactionClient,
+      ) => {
+        const { messageId, channel, error } = event.payload;
+        await this.exceptions.raise(
+          {
+            kind: 'DELIVERY_UNKNOWN',
+            dedupeKey: `message:${messageId}:unknown`,
+            title: `${channel === 'SMS' ? 'A text' : 'An email'} (${messageId}) may or may not have gone out: the provider did not answer`,
+            detail: { messageId, channel, error },
+            entityType: 'Message',
+            entityId: messageId,
+            correlationId: event.correlationId,
+          },
+          tx,
+        );
+      },
+    });
+
+    this.dispatcher.register({
       name: 'operations.dead-letter',
       events: ['JobDeadLettered'],
       handle: async (event: DomainEventRecord<DeadLetterPayload>, tx: Prisma.TransactionClient) => {

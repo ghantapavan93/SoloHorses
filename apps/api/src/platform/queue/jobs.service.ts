@@ -69,6 +69,11 @@ export class DependencyUnavailableError extends Error {
 /** Retrying cannot help (validation, auth). Dead-letters immediately. */
 export class UnrecoverableJobError extends Error {}
 
+/** Longer than any handler runs; shorter than a person would wait to ask why a job says ACTIVE. */
+const INTERRUPTED_AFTER_MS = 5 * 60_000;
+/** How long a shutdown waits for the job in flight before closing anyway. */
+const SHUTDOWN_GRACE_MS = 8_000;
+
 const QUEUE_OPTIONS: Record<
   JobName,
   { attempts: number; backoffMs: number; concurrency: number; limiter?: { max: number; duration: number } }
@@ -108,6 +113,9 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   /** Whether a Redis was configured at all: a missing one is a choice, an unreachable one is an outage. */
   redis: 'connected' | 'unreachable' | 'none' = 'none';
   paused = false;
+  private lastFlushAt: number | null = null;
+  private interruptedRequeued = 0;
+  private stopping = false;
 
   constructor(
     private readonly envService: EnvService,
@@ -169,11 +177,27 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     this.flushTimer.unref();
   }
 
+  /**
+   * A redeploy sends SIGTERM: no new work is started, the flush in flight gets a bounded
+   * moment to finish the job it is on (a handler is seconds; the platform allows more), then
+   * the workers, the queues and the connection close. A job cut off anyway is found at the
+   * next boot as interrupted and run again under its own id.
+   */
   async onModuleDestroy(): Promise<void> {
+    this.stopping = true;
     if (this.flushTimer) clearInterval(this.flushTimer);
+    if (this.flushing) await Promise.race([this.flushing, new Promise((r) => setTimeout(r, SHUTDOWN_GRACE_MS))]);
     await Promise.all([...this.workers.values()].map((w) => w.close()));
     await Promise.all([...this.queues.values()].map((q) => q.close()));
     this.connection?.disconnect();
+  }
+
+  /** What the dependency readout says about the worker: when it last swept, what it recovered. */
+  workerHealth(): { lastFlushAgeMs: number | null; interrupted: number } {
+    return {
+      lastFlushAgeMs: this.lastFlushAt === null ? null : Date.now() - this.lastFlushAt,
+      interrupted: this.interruptedRequeued,
+    };
   }
 
   /** Processors call this at module init. One handler per job name. */
@@ -278,7 +302,10 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async flushBatch(): Promise<number> {
+    if (this.stopping) return 0;
+    this.lastFlushAt = Date.now();
     if (this.mode === 'redis') await this.reconcileWithQueue();
+    else await this.requeueInterrupted();
     const now = new Date();
     const due = { OR: [{ nextRunAt: null }, { nextRunAt: { lte: now } }] };
     const pending = await this.db.jobRecord.findMany({
@@ -349,6 +376,38 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         await this.db.jobRecord.update({ where: { id: record.id }, data: { status: 'QUEUED', enqueuedAt: null } });
       }
       // waiting / active / delayed: Redis still owns it; leave the row alone.
+    }
+  }
+
+  /**
+   * Inline mode has no Redis to ask. A row that says ACTIVE longer than any handler runs was
+   * started by a process that is gone — a redeploy in the middle of a sync, a crash. Its
+   * outcome is unknown, so it is not called failed: it is handed back to the ledger under the
+   * same id and runs again, and every handler that touches the outside world asks the
+   * provider what it already has before creating anything. Found by asking what a redeploy
+   * during a QuickBooks sync would leave behind: a row nobody would ever look at again.
+   */
+  private async requeueInterrupted(): Promise<void> {
+    const interrupted = await this.db.jobRecord.findMany({
+      where: { status: 'ACTIVE', startedAt: { lt: new Date(Date.now() - INTERRUPTED_AFTER_MS) } },
+      take: 50,
+    });
+    for (const record of interrupted) {
+      await this.db.jobRecord.update({
+        where: { id: record.id },
+        data: {
+          status: 'QUEUED',
+          enqueuedAt: null,
+          nextRunAt: null,
+          // The attempt was spent by a process that is gone; it counts, so a job that keeps dying still dead-letters.
+          lastError: `interrupted after ${Math.round((Date.now() - (record.startedAt?.getTime() ?? Date.now())) / 1000)} s: the process that ran it is gone; outcome unknown, run again`,
+        },
+      });
+      this.interruptedRequeued += 1;
+      this.logger.warn(
+        `job ${record.queue}#${record.id} was interrupted mid-run (attempt ${record.attempts}); requeued`,
+      );
+      this.bus.emit({ kind: 'job', jobId: record.id, queue: record.queue, status: 'queued', attempt: record.attempts });
     }
   }
 

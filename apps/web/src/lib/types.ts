@@ -526,6 +526,12 @@ export interface GauntletLine {
   at?: string;
 }
 
+/** The API's dependency readout: one row per thing it leans on, from the service that owns it. */
+export interface DependencyReadout {
+  rows: { name: string; state: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'NONE'; note: string; latencyMs?: number | null }[];
+  at: string;
+}
+
 export interface BuildHealth {
   verify: {
     startedAt: string;
@@ -669,7 +675,8 @@ export type ExceptionKind =
   | 'RETURN_ASSESSMENT_MISSING'
   | 'DEPARTURE_UNCONFIRMED'
   | 'RETURN_FEE_DECISION'
-  | 'PAPERS_RELEASED_FUNDS_RETURNED';
+  | 'PAPERS_RELEASED_FUNDS_RETURNED'
+  | 'DELIVERY_UNKNOWN';
 
 /** Two more things than a title: the system state as the tables hold it, and what it means to the person who acts. Templates, not a model. */
 export interface ExceptionExplanation {

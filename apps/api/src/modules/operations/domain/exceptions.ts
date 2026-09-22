@@ -26,6 +26,12 @@ export const EXCEPTIONS: Record<ExceptionKind, ExceptionDefinition> = {
     source: 'QUEUE',
     actions: ['retry', 'inspect', 'resolve', 'ignore'],
   },
+  DELIVERY_UNKNOWN: {
+    label: 'A message may or may not have gone out',
+    severity: 'WARN',
+    source: 'QUEUE',
+    actions: ['inspect', 'resolve', 'ignore'],
+  },
   WEBHOOK_FAILED: {
     label: 'Payment event could not be applied',
     severity: 'CRITICAL',

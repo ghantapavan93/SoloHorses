@@ -102,4 +102,32 @@ describe('outbox → dispatcher → consumers (integration)', () => {
     expect(resolved.status).toBe('RESOLVED');
     expect(resolved.resolution).toContain('retry');
   });
+
+  it('a job a dead process left ACTIVE is found at the next sweep and run again under its own id', async () => {
+    let ran = 0;
+    jobs.register('reconcile', async () => {
+      ran += 1;
+      await Promise.resolve();
+    });
+    // What a redeploy in the middle of a job leaves behind: ACTIVE, started long ago, nobody running it.
+    const jobId = `reconcile_interrupted_${Date.now().toString(36)}`;
+    await prisma.client.jobRecord.create({
+      data: {
+        id: jobId,
+        queue: 'reconcile',
+        payload: { requestedBy: null },
+        status: 'ACTIVE',
+        attempts: 1,
+        maxAttempts: 3,
+        startedAt: new Date(Date.now() - 10 * 60_000),
+        enqueuedAt: new Date(Date.now() - 10 * 60_000),
+      },
+    });
+    await jobs.flushPending();
+    const after = await prisma.client.jobRecord.findUniqueOrThrow({ where: { id: jobId } });
+    expect(ran).toBe(1);
+    expect(after.status).toBe('COMPLETED');
+    expect(after.attempts).toBe(2);
+    expect(jobs.workerHealth().interrupted).toBeGreaterThanOrEqual(1);
+  });
 });

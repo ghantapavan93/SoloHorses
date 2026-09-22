@@ -37,6 +37,8 @@ const EnvSchema = z.object({
   OLLAMA_URL: z.string().default('http://127.0.0.1:11434'),
   OLLAMA_MODEL: z.string().default('qwen2.5:7b-instruct'),
   OLLAMA_NUM_CTX: z.coerce.number().int().positive().default(8192),
+  /** One model turn may take this long; past it the deterministic composer answers and the run says so. */
+  ASK_MODEL_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
 
   STRIPE_SECRET_KEY: z.string().optional().default(''),
   STRIPE_WEBHOOK_SECRET: z.string().optional().default(''),

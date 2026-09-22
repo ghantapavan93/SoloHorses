@@ -146,6 +146,13 @@ export const SIGNAL_SHAPES: Record<ExceptionKind, SignalShape> = {
     owner: 'ADMIN',
     surface: 'operations',
   },
+  DELIVERY_UNKNOWN: {
+    channel: 'SYSTEM',
+    channelLabel: 'Systems',
+    next: "Check the provider's log",
+    owner: 'ADMIN',
+    surface: 'operations',
+  },
 };
 
 /** The four the front door shows first, in the order a founder meets them. */

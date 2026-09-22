@@ -642,6 +642,7 @@ enum MessageStatus {
   QUEUED
   SENT
   FAILED
+  UNKNOWN // the provider may have sent it: the request went out and no answer came back
 }
 
 model Message {
@@ -1017,6 +1018,7 @@ enum ExceptionKind {
   DEPARTURE_UNCONFIRMED // a leased recip leaves within three days with no video confirmation in foal
   RETURN_FEE_DECISION // the vet's record does not meet the sale condition, or the mare is overdue: a person decides the $6,000
   PAPERS_RELEASED_FUNDS_RETURNED // the certificate went out, then the bank returned the money: a person, at once
+  DELIVERY_UNKNOWN // a message the provider may or may not have sent: a person checks the provider's log before anything goes again
 }
 
 enum ExceptionSeverity {

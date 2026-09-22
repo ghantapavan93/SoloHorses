@@ -132,11 +132,53 @@ someone, open it once yourself; or set the repository variable `RENDER_HEALTH_UR
 minutes from GitHub Actions. One always-on service fits Render's 750 free hours a month; two would
 not.
 
-If a visitor arrives while the API is asleep, the web says so instead of failing: the front-door
-pages show "Waking the estate" and read the records again by themselves once `/api/health` (the
-web's own liveness probe of the API) answers; pages that can render without the API show a notice
-docked low and refresh when it wakes. Nothing waits on the API longer than 25 seconds, so a hung
-upstream is a quiet state, never a platform timeout.
+If a visitor arrives while the API is asleep, the wait is shown for what it is. Within two
+seconds of readiness not coming back, the page draws the warm-up — _Waking the ranch…_, the
+field and the mare, four states and one line of progress — and every state is a health answer,
+never a timer: **Connecting** (the first probe is out) → **API waking** (`/health/live` does not
+answer: the instance is starting) → **Loading operational state** (the process is up, `/health/ready`
+is not) → **Ready** (the page reads its records again, then the overlay dissolves). Probes back off
+from one to five seconds; past two and a half minutes the page stops pretending it is a cold start
+and offers _Retry connection_. A session that has seen the estate awake is not told the story
+again for ten minutes. Nothing waits on the API longer than 25 seconds per read, so a hung upstream
+is a quiet state, never a platform timeout.
+
+## The health contract
+
+Three questions, three routes, never one probe standing in for another:
+
+| Route                  | Answers                                                     | Checks                                                                                           | Who                   |
+| ---------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------- |
+| `/health/live`         | Is this process alive?                                      | nothing but the process; no database, so a probe never keeps a suspending database awake         | the platform, the web |
+| `/health/ready`        | Can this instance serve operational traffic? (503 when not) | the database answers, the schema is migrated, a seeded world is in it — not the model            | the web's warm-up     |
+| `/health/dependencies` | What is everything leaning on, right now?                   | API · Postgres (latency) · Queue · Worker · Model · Fallback · Outbox lag · Dead letters · Build | staff, the Proof page |
+
+Every row of the readout comes from the service that owns the dependency, at the moment of the
+request; `DEGRADED` is a state, not a failure to report, and no row is green by hand. The model
+never decides readiness: with no model, or with one that is away, the deterministic composer
+answers and the run says so.
+
+## A model, and what happens without one
+
+Ask reaches a model through `ModelPort`. With no key it answers from the deterministic composer;
+with `OPENAI_COMPAT_*` set it answers on a hosted model with tool calls. For a demo on free
+infrastructure, prefer a hosted free tier to a model inside the API's own instance — a free
+Render instance cannot run a useful one. Ollama's cloud is one such tier and speaks the same
+OpenAI-style protocol:
+
+```
+ASK_PROVIDER=auto
+OPENAI_COMPAT_BASE_URL=https://ollama.com/v1
+OPENAI_COMPAT_API_KEY=<your Ollama key>
+OPENAI_COMPAT_MODEL=<a cloud model that calls tools, as ollama.com lists them>
+```
+
+Groq, Gemini's OpenAI endpoint and OpenRouter's free models work the same way. Whichever it is,
+a turn may take `ASK_MODEL_TIMEOUT_MS` (60 s by default); past that, or on any provider failure,
+the deterministic composer answers the same question from the same typed tools, the verifier
+checks it the same way, and the run records which model was tried and why it did not answer.
+Model output is parsed against the answer schema before anything is rendered; nothing a model
+says reaches a record. Keys live on the API only; the browser never sees a provider.
 
 ## The world drifts
 
@@ -144,6 +186,25 @@ Every visitor mutates the same demo world — a sale started, a check recorded, 
 and the API never resets a database that holds data. Before a showing, look at `/story` and
 `/settlement` once; if the story has moved on, reset the world (above). Nothing resets it on a
 schedule.
+
+A reseed under a running API is coherent on its own: every cache key carries the seed's stamp,
+the API re-reads the stamp every ten seconds, and the moment it changes every cached projection
+from the previous world becomes unreachable. No restart, nobody remembering one.
+
+## A redeploy in the middle of things
+
+Render sends SIGTERM and waits; the API stops taking work, gives the job in flight a bounded
+moment, closes the queue and the database, and exits. A job cut off anyway is found at the next
+sweep — a row still ACTIVE longer than any handler runs — and handed back to the ledger under its
+own id: its outcome is unknown, so it is not called failed, and every handler that touches the
+outside world asks the provider what it already has before creating anything (the books are
+queried by our document number; a message already sent is left alone). A message whose send timed
+out after the request went out is neither sent nor failed: it is UNKNOWN, an exception a person
+owns, and nothing sends it again by itself.
+
+A proposal survives a restart because it is a row: approval re-reads the role, the policy, the
+proposal's state and the fingerprint of the records it was made from, and refuses as stale if any
+of them moved. Nothing about a decision lives in process memory.
 
 ## CI
 

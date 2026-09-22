@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Geist_Mono, Instrument_Serif, Inter, Montserrat, Oswald } from 'next/font/google';
 import { SignalDockServer } from '@/components/signals/signal-dock-server';
 import { MotionProvider } from '@/components/motion/motion-provider';
-import { WakingNotice } from '@/components/platform/waking';
+import { WarmUp } from '@/components/platform/warm-up';
 import { Toaster } from '@/components/ui/sonner';
 import { currentTheme } from '@/lib/theme';
 import './globals.css';
@@ -72,7 +72,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <MotionProvider>{children}</MotionProvider>
         <SignalDockServer />
         <Toaster position="top-center" richColors closeButton />
-        <WakingNotice />
+        <WarmUp />
       </body>
     </html>
   );

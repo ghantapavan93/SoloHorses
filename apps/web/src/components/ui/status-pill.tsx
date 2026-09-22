@@ -70,6 +70,7 @@ export function toneForStatus(status: string): Tone {
       'MISMATCH',
       'UNCLEAR',
       'RECEIVED',
+      'UNKNOWN',
     ].includes(s)
   )
     return 'warn';

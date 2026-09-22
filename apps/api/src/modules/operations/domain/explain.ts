@@ -203,6 +203,17 @@ export function explain(
         meaning:
           'A payment event arrived that could not be applied to any record. The money is in Stripe; the ledger did not change. A person matches it or ignores it.',
       };
+    case 'DELIVERY_UNKNOWN':
+      return {
+        systemState: [
+          { key: 'message', value: text(d, 'messageId') },
+          { key: 'channel', value: text(d, 'channel') },
+          { key: 'provider.answer', value: 'none' },
+          { key: 'error', value: text(d, 'error') },
+        ],
+        meaning:
+          "The request to send this message went out and no answer came back. The provider may have sent it. Nothing here sends it again: a person reads the provider's log, and either marks it sent or sends it once, by hand.",
+      };
     case 'JOB_DEAD_LETTERED':
     default:
       return {
