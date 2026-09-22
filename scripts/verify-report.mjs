@@ -209,8 +209,12 @@ let dirty = false;
 try {
   commit = execSync('git rev-parse --short HEAD', { cwd: root }).toString().trim();
   // A run over uncommitted changes proves the working tree, not the commit; the readout says which.
-  // Untracked files are not changes to the commit's code, so they do not count.
-  dirty = execSync('git status --porcelain --untracked-files=no', { cwd: root }).toString().trim().length > 0;
+  // Untracked files are not changes to the commit's code, so they do not count; nor does the file
+  // Next rewrites for whichever of dev or build ran last.
+  dirty =
+    execSync("git status --porcelain --untracked-files=no -- . ':!apps/web/next-env.d.ts'", { cwd: root })
+      .toString()
+      .trim().length > 0;
 } catch {
   /* not a repository */
 }
