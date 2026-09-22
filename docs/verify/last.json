@@ -1,21 +1,21 @@
 {
-  "startedAt": "2026-09-22T02:26:12.033Z",
-  "finishedAt": "2026-09-22T02:31:44.044Z",
-  "commit": "3631501",
-  "dirty": true,
+  "startedAt": "2026-09-22T02:33:06.195Z",
+  "finishedAt": "2026-09-22T02:38:20.366Z",
+  "commit": "1548de1",
+  "dirty": false,
   "ok": true,
   "gates": {
     "lint": {
       "ok": true,
-      "ms": 38780
+      "ms": 40412
     },
     "typecheck": {
       "ok": true,
-      "ms": 16733
+      "ms": 17070
     },
     "build": {
       "ok": true,
-      "ms": 47855
+      "ms": 40472
     }
   },
   "suites": {
@@ -23,38 +23,38 @@
       "ok": true,
       "passed": 144,
       "total": 144,
-      "ms": 3429
+      "ms": 3780
     },
     "db": {
       "ok": true,
       "passed": 3,
       "total": 3,
-      "ms": 3122
+      "ms": 3005
     },
     "web": {
       "ok": true,
       "passed": 28,
       "total": 28,
-      "ms": 3962
+      "ms": 3998
     },
     "api": {
       "ok": true,
       "passed": 123,
       "total": 123,
-      "ms": 40181
+      "ms": 40832
     },
     "e2e": {
       "ok": true,
       "passed": 60,
       "total": 60,
-      "ms": 175107
+      "ms": 161757
     }
   },
   "gauntlet": {
     "architecture": {
       "status": "PASS",
       "detail": "0 violations · 534 modules · 1699 edges",
-      "ms": 2681
+      "ms": 2698
     },
     "properties": {
       "status": "PASS",
@@ -73,7 +73,7 @@
     "accessibility": {
       "status": "PASS",
       "detail": "9 pages · 0 serious or critical · 0 minor",
-      "at": "2026-09-22T02:30:54.485Z"
+      "at": "2026-09-22T02:37:38.208Z"
     }
   }
 }
