@@ -12,6 +12,12 @@ const inBarnTime = (options: Intl.DateTimeFormatOptions) =>
 const DAY = inBarnTime({ month: 'short', day: 'numeric' });
 const DAY_LONG = inBarnTime({ weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 const DATE_TIME = inBarnTime({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const BARN_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: BARN_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 /** Newer ICU puts a narrow no-break space before AM/PM; a plain space reads the same and diffs the same everywhere. */
 const plain = (text: string) => text.replace(/ /g, ' ');
 
@@ -35,6 +41,11 @@ export function dayLong(iso: string | null | undefined): string {
 export function dateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
   return plain(DATE_TIME.format(parseISO(iso)));
+}
+
+/** The barn's calendar date for an instant, `YYYY-MM-DD`: the day the operation would write on the record. */
+export function barnDate(iso: string): string {
+  return BARN_DATE.format(parseISO(iso));
 }
 
 export function ago(iso: string | null | undefined): string {

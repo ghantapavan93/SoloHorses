@@ -3,6 +3,7 @@ import { ThemeToggle } from '@/components/shell/theme-toggle';
 import { StoryView } from '@/components/story/story-view';
 import { apiFetch, apiFetchOrNull } from '@/lib/api';
 import { auth } from '@/lib/auth';
+import { gestationRail } from '@/lib/gestation-rail';
 import { currentTheme } from '@/lib/theme';
 import type { AskStatus, Memory, Story, Xray } from '@/lib/types';
 
@@ -54,6 +55,7 @@ export default async function StoryPage({ searchParams }: { searchParams: Promis
       </div>
       <StoryView
         story={story}
+        rail={gestationRail(story)}
         xray={xray}
         askStatus={askStatus}
         memory={memory ?? []}

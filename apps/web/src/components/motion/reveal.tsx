@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, type ReactNode } from 'react';
+import { Fragment, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { EASE, PRESET, SEC } from '@/lib/motion';
 
@@ -39,12 +39,17 @@ export function Reveal({
 export function Stagger({
   children,
   className,
+  style,
+  label,
   step = 0.05,
   delay = 0,
   as = 'div',
 }: {
   children: ReactNode;
   className?: string;
+  style?: CSSProperties;
+  /** An accessible name for the group, when it is a list that stands for something. */
+  label?: string;
   step?: number;
   delay?: number;
   as?: 'div' | 'ul' | 'ol';
@@ -53,6 +58,8 @@ export function Stagger({
   return (
     <Tag
       className={className}
+      style={style}
+      aria-label={label}
       initial="hidden"
       whileInView="shown"
       viewport={{ once: true, margin: '-48px 0px' }}

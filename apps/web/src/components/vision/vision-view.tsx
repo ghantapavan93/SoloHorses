@@ -3,12 +3,34 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { ArrowRight, ScanSearch } from 'lucide-react';
+import {
+  Activity,
+  ArrowRight,
+  Blocks,
+  BookOpenCheck,
+  BookmarkCheck,
+  FileScan,
+  Ghost,
+  Languages,
+  ListChecks,
+  Mic,
+  MoonStar,
+  Plug,
+  Route,
+  Scan,
+  ScanSearch,
+  ShieldCheck,
+  Split,
+  UserCheck,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react';
 import { AgentMembrane } from '@/components/ask/agent-membrane';
 import { AskPanel } from '@/components/ask/ask-panel';
 import { Reveal, Stagger, StaggerItem } from '@/components/motion/reveal';
 import { TraceDrawer } from '@/components/platform/trace-drawer';
 import { AutonomyLadder } from '@/components/vision/autonomy-ladder';
+import { ago } from '@/lib/format';
 import { foldEvent, runFromLast, type MembraneRun } from '@/lib/membrane';
 import type {
   AskAuthority,
@@ -31,7 +53,7 @@ const CONTINUUM: {
   label: string;
   tone: 'built' | 'validation' | 'horizon';
   lead: string;
-  items: { title: string; line: string; href?: string }[];
+  items: { key: string; icon: LucideIcon; title: string; line: string; href?: string }[];
 }[] = [
   {
     key: 'built',
@@ -40,31 +62,43 @@ const CONTINUUM: {
     lead: 'Runs in this build, on synthetic records, with tests.',
     items: [
       {
+        key: 'ask-view-act',
+        icon: Route,
         title: 'Ask → View → Act',
         line: 'A question answered from typed tools; the workspace opens where the problem is; one act prepared, never taken.',
         href: '/today',
       },
       {
+        key: 'xray',
+        icon: Scan,
         title: 'The x-ray',
         line: 'Every record about one mare, the rules that read them, the causal path lit, the person it waits for.',
         href: '/story#why',
       },
       {
+        key: 'approval',
+        icon: UserCheck,
         title: 'Human approval',
         line: 'A proposal as a diff — before, after, what it will never do — executed by the same rule-checked service the screen calls, refused if the records moved.',
         href: '/decisions',
       },
       {
+        key: 'ledger',
+        icon: BookOpenCheck,
         title: 'The decision ledger',
         line: 'Prepared, decided, executed, and the outcome — awaited until the signal closes; a name on every judgment.',
         href: '/decisions',
       },
       {
+        key: 'recorder',
+        icon: Activity,
         title: 'The flight recorder',
         line: 'Every run on one axis: the gate, the tools, the model, the verifier, what came back — never a thought, only what ran.',
         href: '/runs',
       },
       {
+        key: 'gate',
+        icon: ShieldCheck,
         title: 'A gate before the model, a verifier after',
         line: 'Refusals decided in code; every claim checked against the ids the tools returned; evals grade the boundary each run.',
         href: '/build',
@@ -78,22 +112,32 @@ const CONTINUUM: {
     lead: 'Hypotheses. Each is a question only weeks beside the people who run the estate can answer.',
     items: [
       {
+        key: 'shadow',
+        icon: Ghost,
         title: 'Shadow mode',
         line: 'What the team decided against what Ask would have prepared, per decision kind, measured over real weeks — not asserted.',
       },
       {
+        key: 'voice',
+        icon: Mic,
         title: 'Ranch voice capture',
         line: 'A voice note from the barn becomes a typed intake row a person confirms — the same inbox, the same rules.',
       },
       {
+        key: 'paperwork',
+        icon: FileScan,
         title: 'Multimodal paperwork',
         line: 'A photographed form or a scanned registration read into typed fields, cited to the image, confirmed by a person.',
       },
       {
+        key: 'memory',
+        icon: BookmarkCheck,
         title: 'Scoped preference memory',
         line: 'Stated preferences shape how answers are presented — per person, per role — never what a rule decides.',
       },
       {
+        key: 'words',
+        icon: Languages,
         title: 'The words the barn uses',
         line: 'Flush, OPU, the 14-day check, Coggins, settlement by Monday: where a term is used the way the barn does not, the product is wrong first.',
       },
@@ -106,32 +150,78 @@ const CONTINUUM: {
     lead: 'Written down. None of it is built, and nothing here has a date.',
     items: [
       {
+        key: 'skills',
+        icon: Blocks,
         title: 'Ask skills across the applications',
         line: 'The same typed tools over the operation’s own platform, books and portal, behind the same policy layer, once the boundaries are agreed.',
       },
       {
+        key: 'coordination',
+        icon: ListChecks,
         title: 'Approved coordination',
         line: 'A prepared sequence — request, reschedule, notify — approved once as a whole, executed step by step, each step a row.',
       },
       {
+        key: 'routing',
+        icon: Split,
         title: 'Model routing',
         line: 'A local model for the routine, a larger one for the hard question, chosen per question by the eval scores.',
       },
       {
+        key: 'interop',
+        icon: Plug,
         title: 'Open tool interoperability',
         line: 'The typed tools exposed over an open protocol, so another assistant reads the estate through the same gate.',
       },
       {
+        key: 'overnight',
+        icon: MoonStar,
         title: 'A proactive overnight operator',
         line: 'The brief written at 5 a.m. from the snapshot, with the night’s changes and the day’s blocked items, waiting on the board.',
       },
       {
+        key: 'execute',
+        icon: Zap,
         title: 'Execute, one narrow kind',
         line: 'A step taken without waiting — only a kind whose shadow agreement and eval scores cross a threshold the operation sets; never a clinical result, money, or a customer message.',
       },
     ],
   },
 ];
+
+/** What a built tile can say from the live page: one figure, from the same data the page already has. */
+function figureFor(
+  key: string,
+  ctx: {
+    story: Story | null;
+    lastRun: AskLastRun | null;
+    decisions: { total: number; approved: number; stale: number };
+  },
+): string | null {
+  const { story, lastRun, decisions } = ctx;
+  switch (key) {
+    case 'ask-view-act':
+      return lastRun
+        ? `${lastRun.steps.length} tool${lastRun.steps.length === 1 ? '' : 's'} · last run ${ago(lastRun.at)}`
+        : null;
+    case 'xray':
+      return story ? `${story.rows.length} rows about ${story.recip.id}` : null;
+    case 'approval':
+      return decisions.total > 0 ? `${decisions.approved} of ${decisions.total} approved by a person` : null;
+    case 'ledger':
+      return decisions.total > 0
+        ? `${decisions.total} decision${decisions.total === 1 ? '' : 's'} · ${decisions.stale} stale`
+        : null;
+    case 'recorder':
+      return lastRun
+        ? `${lastRun.model ?? 'offline'}${lastRun.latencyMs !== null ? ` · ${lastRun.latencyMs} ms` : ''}`
+        : null;
+    case 'gate':
+      return lastRun ? (lastRun.refused ? `last run refused · ${lastRun.refused}` : 'last run passed the gate') : null;
+    default:
+      return null;
+  }
+}
 
 const TONE: Record<'built' | 'validation' | 'horizon', { dot: string; label: string; badge: string }> = {
   built: { dot: 'bg-ok', label: 'text-ok', badge: 'built' },
@@ -225,24 +315,41 @@ export function VisionView({
               </StaggerItem>
               <ul className="mt-4 space-y-2.5">
                 {column.items.map((item) => (
-                  <StaggerItem as="li" key={item.title} className="card-op px-3 py-2.5">
-                    <p className="flex items-baseline justify-between gap-2 text-[12.5px] font-medium text-paper">
-                      {item.href ? (
-                        <Link
-                          href={
-                            signedIn || item.href.startsWith('/story') || item.href.startsWith('/build')
-                              ? item.href
-                              : `/login?next=${encodeURIComponent(item.href)}`
-                          }
-                          className="inline-flex items-center gap-1 underline-offset-4 hover:underline"
-                        >
-                          {item.title} <ArrowRight className="size-3 text-muted-foreground" />
-                        </Link>
-                      ) : (
-                        item.title
+                  <StaggerItem as="li" key={item.key} className="card-op flex gap-3 px-3 py-2.5">
+                    <item.icon
+                      className={cn(
+                        'mt-0.5 size-4 shrink-0',
+                        column.tone === 'built'
+                          ? 'text-copper-2'
+                          : column.tone === 'validation'
+                            ? 'text-warn'
+                            : 'text-muted-foreground',
                       )}
-                    </p>
-                    <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">{item.line}</p>
+                      strokeWidth={1.75}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-baseline justify-between gap-2 text-[12.5px] font-medium text-paper">
+                        {item.href ? (
+                          <Link
+                            href={
+                              signedIn || item.href.startsWith('/story') || item.href.startsWith('/build')
+                                ? item.href
+                                : `/login?next=${encodeURIComponent(item.href)}`
+                            }
+                            className="inline-flex items-center gap-1 underline-offset-4 hover:underline"
+                          >
+                            {item.title} <ArrowRight className="size-3 text-muted-foreground" />
+                          </Link>
+                        ) : (
+                          item.title
+                        )}
+                      </p>
+                      {column.tone === 'built' ? (
+                        <Figure text={figureFor(item.key, { story, lastRun, decisions })} />
+                      ) : null}
+                      <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">{item.line}</p>
+                    </div>
                   </StaggerItem>
                 ))}
               </ul>
@@ -347,6 +454,12 @@ export function VisionView({
       <TraceDrawer correlationId={trace} onClose={() => setTrace(null)} />
     </div>
   );
+}
+
+/** The live figure under a built tile; nothing when the API is away, never a placeholder. */
+function Figure({ text }: { text: string | null }) {
+  if (!text) return null;
+  return <p className="readout mt-1 text-[9.5px] text-ok">{text}</p>;
 }
 
 function Idea({

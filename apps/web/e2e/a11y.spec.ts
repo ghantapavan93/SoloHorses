@@ -34,6 +34,8 @@ function record(path: string, violations: Finding[]): void {
 
 async function scan(page: Page, path: string): Promise<void> {
   await page.goto(path, { waitUntil: 'networkidle' });
+  // Reveals fade in over about a second; contrast is a property of the settled page, not of a frame mid-fade.
+  await page.waitForTimeout(2_000);
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   record(
     path,

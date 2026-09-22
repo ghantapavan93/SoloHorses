@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dateTime, day, dayLong, hrefFor, label, usd } from './format';
+import { barnDate, dateTime, day, dayLong, hrefFor, label, usd } from './format';
 
 describe('hrefFor', () => {
   it('routes every citable code to its page', () => {
@@ -31,6 +31,8 @@ describe("dates read in the barn's time zone wherever they are rendered", () => 
     expect(dateTime('2026-04-21T01:30:00.000Z')).toBe('Apr 20, 8:30 PM');
     expect(day('2026-04-21T01:30:00.000Z')).toBe('Apr 20');
     expect(dayLong('2026-04-21T01:30:00.000Z')).toBe('Mon, Apr 20, 2026');
+    expect(barnDate('2026-04-21T01:30:00.000Z')).toBe('2026-04-20');
+    expect(barnDate('2026-04-20')).toBe('2026-04-20');
     expect(dateTime(null)).toBe('—');
   });
 });
