@@ -30,6 +30,9 @@ export function newCorrelationId(): string {
 
 const secret = new TextEncoder().encode(env.AUTH_SECRET);
 
+/** Longer than any honest read, shorter than the hosting platform's patience with a function. */
+const API_TIMEOUT_MS = 25_000;
+
 /**
  * The identity the public front door reads as when nobody is signed in. Seeded with a fixed
  * id (packages/db/prisma/seed.ts); synthetic data only. Pages behind the app shell never use
@@ -64,12 +67,29 @@ export async function apiFetch<T>(
   headers.set('Authorization', `Bearer ${token}`);
   headers.set('x-correlation-id', init.correlationId ?? newCorrelationId());
   if (init.json !== undefined) headers.set('Content-Type', 'application/json');
-  const response = await fetch(`${env.API_URL}${path}`, {
-    ...init,
-    headers,
-    body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
-    cache: 'no-store',
-  });
+  const correlationId = headers.get('x-correlation-id');
+  let response: Response;
+  try {
+    response = await fetch(`${env.API_URL}${path}`, {
+      ...init,
+      headers,
+      body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    });
+  } catch (error) {
+    // Nothing listening, a reset mid-handshake, or no answer in time: free hosting sleeps after a
+    // quiet quarter hour and takes most of a minute to wake. One code for all of it, so a page can
+    // say "waking" instead of "broken", and the OrNull reads render their quiet state.
+    const timedOut = error instanceof Error && error.name === 'TimeoutError';
+    throw new ApiError(
+      503,
+      'API_UNREACHABLE',
+      timedOut ? `The API did not answer within ${API_TIMEOUT_MS / 1000}s` : 'The API did not answer',
+      undefined,
+      correlationId,
+    );
+  }
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as {
       code?: string;

@@ -399,3 +399,12 @@ html[data-shell='1'] [data-testid='signal-dock'] {
 .frame-decision[data-state='NONE'] {
   border-left-color: var(--muted-foreground);
 }
+/* The waking notice's bar: a short run, back and forth, until the estate answers. */
+@keyframes waking {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}

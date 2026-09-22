@@ -231,14 +231,15 @@ export function StoryView({
         ) : null}
       </header>
       {/* ── her cycle on one line: the checks, the fees, the check missing, the day she leaves ── */}
-      <section className="hidden rounded-md border px-3 pb-1 pt-2 md:block" data-testid="story-rail">
+      <section className="rounded-md border px-3 pb-3 pt-2 md:pb-1" data-testid="story-rail">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="eyebrow">Her cycle, so far</p>
           <p className="text-[11px] text-muted-foreground">
-            day {story.pregnancy.gestationDay} · solid is on the record · dashed is not yet
+            day {story.pregnancy.gestationDay}
+            <span className="hidden md:inline"> · solid is on the record · dashed is not yet</span>
           </p>
         </div>
-        <Rail {...rail} className="mt-1" />
+        <Rail {...rail} className="mt-2 md:mt-1" />
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">

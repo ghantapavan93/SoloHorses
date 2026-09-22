@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Geist_Mono, Instrument_Serif, Inter, Montserrat, Oswald } from 'next/font/google';
 import { SignalDockServer } from '@/components/signals/signal-dock-server';
 import { MotionProvider } from '@/components/motion/motion-provider';
+import { WakingProvider } from '@/components/platform/waking';
 import { Toaster } from '@/components/ui/sonner';
 import { currentTheme } from '@/lib/theme';
 import './globals.css';
@@ -24,11 +25,27 @@ const instrumentSerif = Instrument_Serif({
   display: 'swap',
 });
 
+/** Where the site lives, for absolute links in its metadata: the hosting platform says on its own machines. */
+const SITE_URL = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : (process.env.WEB_URL ?? 'http://localhost:3100');
+
+const DESCRIPTION =
+  'Unofficial candidate prototype: an operations backend for a performance-horse breeding business. All data synthetic.';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: { default: 'Daysheet', template: '%s · Daysheet' },
-  description:
-    'Unofficial candidate prototype: an operations backend for a performance-horse breeding business. All data synthetic.',
+  description: DESCRIPTION,
   robots: { index: false, follow: false },
+  // The card a shared link shows; the image is drawn by opengraph-image.tsx, next to this file.
+  openGraph: {
+    type: 'website',
+    siteName: 'Daysheet',
+    title: 'Daysheet — one mare, every handoff',
+    description: DESCRIPTION,
+  },
+  twitter: { card: 'summary_large_image', title: 'Daysheet — one mare, every handoff', description: DESCRIPTION },
 };
 
 export const viewport: Viewport = {
@@ -50,9 +67,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       suppressHydrationWarning
     >
       <body className="min-h-dvh antialiased">
-        <MotionProvider>{children}</MotionProvider>
-        <SignalDockServer />
-        <Toaster position="top-center" richColors closeButton />
+        <WakingProvider>
+          <MotionProvider>{children}</MotionProvider>
+          <SignalDockServer />
+          <Toaster position="top-center" richColors closeButton />
+        </WakingProvider>
       </body>
     </html>
   );

@@ -137,7 +137,8 @@ export function Rail({ nodes, now, nowLabel, breaks = [], label, className }: Ra
 
   return (
     <div ref={ref} className={cn('w-full', className)}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={label}>
+      <RailList nodes={nodes} now={now} nowLabel={nowLabel} label={label} />
+      <svg viewBox={`0 0 ${W} ${H}`} className="hidden h-auto w-full md:block" role="img" aria-label={label}>
         {/* The rail: solid where it has happened, dashed where it has not. */}
         <motion.line
           x1={X0}
@@ -271,5 +272,60 @@ export function Rail({ nodes, now, nowLabel, breaks = [], label, className }: Ra
         })}
       </svg>
     </div>
+  );
+}
+
+const LIST_DOT: Record<RailState, string> = {
+  done: 'border-ok bg-ok',
+  current: 'border-copper-2 bg-copper-2',
+  pending: 'border-muted-foreground bg-background',
+  blocked: 'border-warn bg-warn',
+  planned: 'border-dashed border-muted-foreground bg-background',
+};
+
+/**
+ * The same stations standing on their side, for a phone: the drawing's text would be too small
+ * at that width, and the story is the same read top to bottom. "Now" takes its place in the
+ * order like any station.
+ */
+function RailList({ nodes, now, nowLabel, label }: Pick<RailProps, 'nodes' | 'now' | 'nowLabel' | 'label'>) {
+  const items: { key: string; at: number; label: string; sub?: string; state: RailState | 'now' }[] = nodes.map(
+    (n) => ({ key: n.key, at: n.at, label: n.label, sub: n.sub, state: n.state }),
+  );
+  if (now !== undefined && nowLabel) items.push({ key: '__now', at: now, label: nowLabel, state: 'now' });
+  items.sort((a, b) => a.at - b.at);
+  return (
+    <ol className="relative ml-[7px] border-l md:hidden" aria-label={label}>
+      {items.map((it) => (
+        <li key={it.key} className="relative pb-3 pl-5 last:pb-0">
+          {it.state === 'now' ? (
+            <span className="absolute -left-[5px] top-[7px] h-2.5 w-[9px] rounded-sm bg-copper-2" aria-hidden />
+          ) : (
+            <span
+              className={cn(
+                'absolute -left-[7px] top-[5px] size-[13px] rounded-full border-[1.5px]',
+                LIST_DOT[it.state],
+              )}
+              aria-hidden
+            />
+          )}
+          <p
+            className={cn(
+              'text-[13px] leading-snug',
+              it.state === 'now'
+                ? 'text-[11px] uppercase tracking-[0.16em] text-copper-2'
+                : it.state === 'blocked'
+                  ? 'font-medium text-warn'
+                  : it.state === 'planned' || it.state === 'pending'
+                    ? 'text-muted-foreground'
+                    : 'font-medium',
+            )}
+          >
+            {it.label}
+          </p>
+          {it.sub ? <p className="text-[11.5px] text-muted-foreground">{it.sub}</p> : null}
+        </li>
+      ))}
+    </ol>
   );
 }

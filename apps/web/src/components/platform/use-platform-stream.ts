@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PlatformSignalEnvelope } from '@/lib/types';
 
 /**
@@ -58,13 +58,63 @@ export function usePlatformStream(
 }
 
 /**
+ * A refresh that lands while a navigation is in flight can take the navigation with it: the
+ * page re-reads itself and the click goes nowhere. The router does not say when it is busy, so
+ * the last click on a link or a button marks a grace period during which a refresh waits its
+ * turn; a pathname change ends the period early. One listener for the whole document.
+ */
+const NAVIGATION_GRACE_MS = 4_000;
+let navigationStartedAt = 0;
+
+export function noteNavigationIntent(): void {
+  navigationStartedAt = Date.now();
+}
+
+function navigating(): boolean {
+  return Date.now() < navigationStartedAt + NAVIGATION_GRACE_MS;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(
+    'click',
+    (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('a[href], button')) noteNavigationIntent();
+    },
+    true,
+  );
+}
+
+/** Refreshes now, or as soon as no navigation is in flight; a burst collapses into one refresh. */
+export function useDeferredRefresh(): (afterMs?: number) => void {
+  const router = useRouter();
+  const pathname = usePathname();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    // The pathname changed: whatever navigation was pending has landed.
+    navigationStartedAt = 0;
+  }, [pathname]);
+  useEffect(() => () => clearTimeout(timer.current ?? undefined), []);
+  return useCallback(
+    (afterMs = 0) => {
+      const attempt = () => {
+        if (navigating()) timer.current = setTimeout(attempt, 250);
+        else router.refresh();
+      };
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(attempt, afterMs);
+    },
+    [router],
+  );
+}
+
+/**
  * Refreshes the current server-rendered page when a matching signal arrives — the
  * "domain event → push → invalidate" pattern, debounced so a burst of job transitions
- * becomes one refresh.
+ * becomes one refresh, and deferred while a navigation is in flight.
  */
 export function useLiveRefresh(matches: (signal: PlatformSignalEnvelope) => boolean, debounceMs = 500) {
-  const router = useRouter();
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refresh = useDeferredRefresh();
   const matcher = useRef(matches);
   useEffect(() => {
     matcher.current = matches;
@@ -72,10 +122,9 @@ export function useLiveRefresh(matches: (signal: PlatformSignalEnvelope) => bool
   return usePlatformStream({
     onSignal: (signal) => {
       if (!matcher.current(signal)) return;
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => router.refresh(), debounceMs);
+      refresh(debounceMs);
     },
     // A missed event is a missed refresh: the page reads the server again once the stream is back.
-    onReconnect: () => router.refresh(),
+    onReconnect: () => refresh(0),
   });
 }

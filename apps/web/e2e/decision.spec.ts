@@ -123,7 +123,8 @@ test.describe('the decision: x-ray → why → prepare → diff → approve, and
     await page.getByRole('combobox', { name: 'Clearance' }).first().selectOption('COGGINS');
     await page.getByRole('combobox', { name: 'Result' }).first().selectOption('CLEAR');
     await page.getByTestId('record-coggins').click();
-    await expect(page.getByText(/recorded/i).first()).toBeVisible({ timeout: 20_000 });
+    // The control's own toast, not any "recorded" on the page (the rail says "never recorded" of the missing check).
+    await expect(page.getByText(/recorded: clear/i).first()).toBeVisible({ timeout: 20_000 });
 
     // The click: approval re-reads the records, sees they moved, marks the proposal stale, sends nothing.
     await card.getByTestId('decision-approve').click();

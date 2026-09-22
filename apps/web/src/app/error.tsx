@@ -1,13 +1,52 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { WakingCopy, useAwake } from '@/components/platform/waking';
 
-/** A page failed; the layout, the dock and the navigation did not. Nothing entered was lost on the server. */
+/**
+ * A page failed; the layout, the dock and the navigation did not. Nothing entered was lost on
+ * the server. One cause deserves its own words: the API asleep on free hosting, which wakes in
+ * about a minute — the page says so, and tries again by itself the moment the estate answers.
+ */
 export default function PageError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  const { awake, claim } = useAwake();
+
   useEffect(() => {
     console.error('[page]', error.message);
   }, [error]);
+
+  // This page says "waking" in its own words; the layout's notice stands down meanwhile.
+  useEffect(() => {
+    claim(true);
+    return () => claim(false);
+  }, [claim]);
+
+  // The estate was asleep when the page read it and has since answered: read again — only then,
+  // or a page that is broken for its own reasons would be retried without end.
+  const wasAsleep = useRef(false);
+  useEffect(() => {
+    if (awake === 'no') wasAsleep.current = true;
+    if (awake === 'yes' && wasAsleep.current) {
+      wasAsleep.current = false;
+      reset();
+    }
+  }, [awake, reset]);
+
+  if (awake === 'no') {
+    return (
+      <main
+        className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center gap-3 px-4 py-12 text-[13px]"
+        role="status"
+        aria-live="polite"
+        data-testid="waking-page"
+      >
+        <p className="eyebrow">The estate</p>
+        <WakingCopy />
+      </main>
+    );
+  }
+
   return (
     <main
       className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center gap-3 px-4 py-12 text-[13px]"

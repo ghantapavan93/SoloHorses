@@ -132,6 +132,19 @@ someone, open it once yourself; or set the repository variable `RENDER_HEALTH_UR
 minutes from GitHub Actions. One always-on service fits Render's 750 free hours a month; two would
 not.
 
+If a visitor arrives while the API is asleep, the web says so instead of failing: the front-door
+pages show "Waking the estate" and read the records again by themselves once `/api/health` (the
+web's own liveness probe of the API) answers; pages that can render without the API show a notice
+docked low and refresh when it wakes. Nothing waits on the API longer than 25 seconds, so a hung
+upstream is a quiet state, never a platform timeout.
+
+## The world drifts
+
+Every visitor mutates the same demo world — a sale started, a check recorded, a video confirmed —
+and the API never resets a database that holds data. Before a showing, look at `/story` and
+`/settlement` once; if the story has moved on, reset the world (above). Nothing resets it on a
+schedule.
+
 ## CI
 
 [`ci.yml`](../.github/workflows/ci.yml) runs on every push to `main` and every pull request:
