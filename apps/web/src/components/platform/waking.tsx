@@ -1,16 +1,20 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useDeferredRefresh } from '@/components/platform/use-platform-stream';
 import { cn } from '@/lib/utils';
 
 /**
  * Free hosting sleeps after a quiet quarter hour and takes most of a minute to wake. The first
- * person through the door in the morning must not meet an error page for it. One poller, in
- * the root layout, asks the web whether the estate is awake; while it is not, a notice says so
- * and keeps asking; the moment it is, the page reads the records again by itself. A page that
- * has its own words for the wait (the error boundary) claims the notice, so it is said once.
- * When the API is up nothing here renders.
+ * person through the door in the morning must not meet an error page for it. One poller asks
+ * the web whether the estate is awake; while it is not, a notice says so and keeps asking; the
+ * moment it is, the page reads the records again by itself. A page that has its own words for
+ * the wait (the error boundary) claims the notice, so it is said once.
+ *
+ * The state lives outside React on purpose. The notice sits beside the page in the root layout,
+ * never above it: a state update in an ancestor of a page that is still streaming makes React
+ * give up on the server's HTML for that page and render it again on the client — and the
+ * server's copy stays behind, hidden, so every element on the page exists twice.
  */
 export type Awake = 'unknown' | 'yes' | 'no';
 
@@ -34,69 +38,69 @@ const remember = (): void => {
   }
 };
 
-interface AwakeState {
+interface Store {
   awake: Awake;
-  /** A page that shows its own waking copy takes the notice over while it is mounted. */
-  claim: (on: boolean) => void;
+  claimed: boolean;
+  polling: boolean;
+  listeners: Set<() => void>;
 }
 
-const AwakeContext = createContext<AwakeState>({ awake: 'unknown', claim: () => undefined });
+const store: Store = { awake: 'unknown', claimed: false, polling: false, listeners: new Set() };
 
-function usePoll(): Awake {
-  const [awake, setAwake] = useState<Awake>('unknown');
+function set(patch: Partial<Pick<Store, 'awake' | 'claimed'>>): void {
+  Object.assign(store, patch);
+  for (const listener of store.listeners) listener();
+}
+
+async function probe(): Promise<boolean> {
+  try {
+    const response = await fetch('/api/health', { cache: 'no-store' });
+    return ((await response.json()) as { ok?: boolean }).ok === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Starts the poll once per page load; a remembered answer skips it. */
+function ensurePolling(): void {
+  if (store.polling) return;
+  store.polling = true;
+  if (remembered()) {
+    set({ awake: 'yes' });
+    return;
+  }
+  const ask = async () => {
+    const ok = await probe();
+    if (ok) remember();
+    set({ awake: ok ? 'yes' : 'no' });
+    if (!ok) setTimeout(ask, POLL_MS);
+  };
+  void ask();
+}
+
+function subscribe(listener: () => void): () => void {
+  store.listeners.add(listener);
+  ensurePolling();
+  return () => {
+    store.listeners.delete(listener);
+  };
+}
+
+const awakeSnapshot = () => store.awake;
+const awakeOnServer = (): Awake => 'unknown';
+const claimedSnapshot = () => store.claimed;
+const claimedOnServer = () => false;
+
+export function useAwake(): Awake {
+  return useSyncExternalStore(subscribe, awakeSnapshot, awakeOnServer);
+}
+
+/** A page that says "waking" in its own words takes the notice over while it is mounted. */
+export function useClaimWakingNotice(): void {
   useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const ask = async () => {
-      let ok = false;
-      try {
-        const response = await fetch('/api/health', { cache: 'no-store' });
-        ok = ((await response.json()) as { ok?: boolean }).ok === true;
-      } catch {
-        ok = false;
-      }
-      if (cancelled) return;
-      if (ok) remember();
-      setAwake(ok ? 'yes' : 'no');
-      if (!ok) timer = setTimeout(ask, POLL_MS);
-    };
-    // A remembered answer still arrives from outside React's render, the way a probe's would.
-    if (remembered()) timer = setTimeout(() => setAwake('yes'), 0);
-    else void ask();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
+    set({ claimed: true });
+    return () => set({ claimed: false });
   }, []);
-  return awake;
-}
-
-export function WakingProvider({ children }: { children: ReactNode }) {
-  const awake = usePoll();
-  const refresh = useDeferredRefresh();
-  const [claimed, setClaimed] = useState(false);
-  const wasAsleep = useRef(false);
-  const claim = useCallback((on: boolean) => setClaimed(on), []);
-
-  useEffect(() => {
-    if (awake === 'no') wasAsleep.current = true;
-    // Asleep when the page was read, answering now: read the records again, once.
-    if (awake === 'yes' && wasAsleep.current) {
-      wasAsleep.current = false;
-      refresh(0);
-    }
-  }, [awake, refresh]);
-
-  return (
-    <AwakeContext value={{ awake, claim }}>
-      {children}
-      {awake === 'no' && !claimed ? <WakingNotice /> : null}
-    </AwakeContext>
-  );
-}
-
-export function useAwake(): AwakeState {
-  return useContext(AwakeContext);
 }
 
 export function WakingCopy() {
@@ -114,8 +118,27 @@ export function WakingCopy() {
   );
 }
 
-/** The notice, docked low, while the estate is asleep. */
-function WakingNotice({ className }: { className?: string }) {
+/**
+ * The notice, docked low, while the estate is asleep — and the refresh once it wakes, for the
+ * pages that rendered without it. Mounted beside the page, never around it.
+ */
+export function WakingNotice({ className }: { className?: string }) {
+  const awake = useAwake();
+  const claimed = useSyncExternalStore(subscribe, claimedSnapshot, claimedOnServer);
+  const refresh = useDeferredRefresh();
+  const wasAsleep = useRef(false);
+
+  useEffect(() => {
+    if (awake === 'no') wasAsleep.current = true;
+    // Asleep when the page was read, answering now: read the records again, once. A page that
+    // claimed the notice reads them again itself.
+    if (awake === 'yes' && wasAsleep.current) {
+      wasAsleep.current = false;
+      if (!claimed) refresh(0);
+    }
+  }, [awake, claimed, refresh]);
+
+  if (awake !== 'no' || claimed) return null;
   return (
     <div
       role="status"

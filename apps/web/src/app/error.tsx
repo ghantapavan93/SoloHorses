@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef } from 'react';
-import { WakingCopy, useAwake } from '@/components/platform/waking';
+import { useRouter } from 'next/navigation';
+import { startTransition, useEffect, useRef } from 'react';
+import { WakingCopy, useAwake, useClaimWakingNotice } from '@/components/platform/waking';
 
 /**
  * A page failed; the layout, the dock and the navigation did not. Nothing entered was lost on
@@ -10,28 +11,29 @@ import { WakingCopy, useAwake } from '@/components/platform/waking';
  * about a minute — the page says so, and tries again by itself the moment the estate answers.
  */
 export default function PageError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  const { awake, claim } = useAwake();
+  const awake = useAwake();
+  const router = useRouter();
+  // This page says "waking" in its own words; the layout's notice stands down meanwhile.
+  useClaimWakingNotice();
 
   useEffect(() => {
     console.error('[page]', error.message);
   }, [error]);
 
-  // This page says "waking" in its own words; the layout's notice stands down meanwhile.
-  useEffect(() => {
-    claim(true);
-    return () => claim(false);
-  }, [claim]);
-
   // The estate was asleep when the page read it and has since answered: read again — only then,
   // or a page that is broken for its own reasons would be retried without end.
+  // The error came from the server's read, so the records are read again before the boundary resets.
   const wasAsleep = useRef(false);
   useEffect(() => {
     if (awake === 'no') wasAsleep.current = true;
     if (awake === 'yes' && wasAsleep.current) {
       wasAsleep.current = false;
-      reset();
+      startTransition(() => {
+        router.refresh();
+        reset();
+      });
     }
-  }, [awake, reset]);
+  }, [awake, reset, router]);
 
   if (awake === 'no') {
     return (

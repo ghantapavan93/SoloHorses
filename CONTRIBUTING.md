@@ -23,6 +23,15 @@ pnpm verify                                # lint, format, typecheck, architectu
 CI runs the same on every push and pull request, then boots both apps and runs the Playwright
 journeys. `pnpm verify:report` writes the counts the honesty page shows.
 
+CI runs the journeys against production builds; a local `pnpm verify` runs them against the dev
+server, which hides what streaming and hydration do differently in production. Before touching the
+root layout, a loading boundary or anything that wraps a page, run them the way CI does:
+
+```bash
+pnpm --filter web build && (cd apps/web && NODE_ENV=production AUTH_TRUST_HOST=true npx next start -p 3102)
+WEB_URL=http://localhost:3102 pnpm --filter web exec playwright test --project=desktop --project=phone --no-deps
+```
+
 ## Where things live
 
 - `apps/api` — NestJS. `platform/` is the machinery: config, persistence, audit, codes, clock, events and the

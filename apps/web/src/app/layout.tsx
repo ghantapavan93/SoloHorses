@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Geist_Mono, Instrument_Serif, Inter, Montserrat, Oswald } from 'next/font/google';
 import { SignalDockServer } from '@/components/signals/signal-dock-server';
 import { MotionProvider } from '@/components/motion/motion-provider';
-import { WakingProvider } from '@/components/platform/waking';
+import { WakingNotice } from '@/components/platform/waking';
 import { Toaster } from '@/components/ui/sonner';
 import { currentTheme } from '@/lib/theme';
 import './globals.css';
@@ -67,11 +67,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       suppressHydrationWarning
     >
       <body className="min-h-dvh antialiased">
-        <WakingProvider>
-          <MotionProvider>{children}</MotionProvider>
-          <SignalDockServer />
-          <Toaster position="top-center" richColors closeButton />
-        </WakingProvider>
+        {/* Nothing stateful wraps the page: an update above a page still streaming makes React
+            drop the server's HTML for it and render it twice. Live things stand beside it. */}
+        <MotionProvider>{children}</MotionProvider>
+        <SignalDockServer />
+        <Toaster position="top-center" richColors closeButton />
+        <WakingNotice />
       </body>
     </html>
   );
