@@ -81,7 +81,7 @@ test('phone: the board opens on the brief, two tiles a row, and the ledger table
     await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
   ).toBeLessThanOrEqual(0);
   await page.goto('/decisions');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText(/decision|Nothing waits/);
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(/decision|Nothing waits|Nothing needs approval/);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
   ).toBeLessThanOrEqual(0);

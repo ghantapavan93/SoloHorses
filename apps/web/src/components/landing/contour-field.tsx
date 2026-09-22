@@ -37,7 +37,8 @@ const NODES: { x: number; y: number; label: string }[] = [
   { x: 860, y: 480, label: 'recipient farm' },
 ];
 
-export function ContourField() {
+/** `sites` draws the three points and their labels; a frame narrower than the landing's leaves them off. */
+export function ContourField({ sites = true }: { sites?: boolean } = {}) {
   const ref = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -81,7 +82,7 @@ export function ContourField() {
         {PATHS.map((d, i) => (
           <path key={i} d={d} opacity={0.35 + (i % 3) * 0.2} />
         ))}
-        {NODES.map((n) => (
+        {(sites ? NODES : []).map((n) => (
           <g key={n.label}>
             <circle cx={n.x} cy={n.y} r="3" fill="currentColor" stroke="none" />
             <circle cx={n.x} cy={n.y} r="14" strokeWidth="0.6" opacity="0.6" />
