@@ -4,9 +4,13 @@ import { auth } from '@/lib/auth';
 import { currentTheme } from '@/lib/theme';
 import { ThemeToggle } from '@/components/shell/theme-toggle';
 import { StatusPill } from '@/components/ui/status-pill';
+import { Reveal, Stagger, StaggerItem } from '@/components/motion/reveal';
 import { dateTime, label } from '@/lib/format';
 import { BuildHealthPanel } from '@/components/honesty/build-health';
+import { EstateMap } from '@/components/honesty/estate-map';
+import { Gauntlet } from '@/components/honesty/gauntlet';
 import type { AskStatus, BuildHealth, EvalCase, EvalRun, Health, LabStatus } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 export const metadata = { title: 'What is real, simulated, probably wrong' };
 export const dynamic = 'force-dynamic';
@@ -231,6 +235,48 @@ const AI_USE = [
  * The honesty page. It is public and reads as the demo reviewer so the eval table is real
  * data from the API, not a static badge. Nothing on it can change a record.
  */
+
+/** The eval scorecard's bars: one per category, with the case count and a sample question a reader can judge. */
+function EvalScorecard({ byCategory, latest }: { byCategory: Record<string, EvalCase[]>; latest: EvalRun | null }) {
+  const entries = Object.entries(byCategory).sort((a, b) => b[1].length - a[1].length);
+  const max = Math.max(1, ...entries.map(([, list]) => list.length));
+  return (
+    <ul className="mt-3 space-y-2" data-testid="eval-scorecard">
+      {entries.map(([category, list]) => (
+        <li
+          key={category}
+          className="grid items-center gap-x-3 gap-y-1 text-[12px] md:grid-cols-[120px_minmax(0,1fr)_minmax(0,1.4fr)]"
+        >
+          <span className="readout text-muted-foreground">{label(category)}</span>
+          <span className="flex items-center gap-2">
+            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+              <span
+                className="block h-full rounded-full bg-copper-2"
+                style={{ width: `${(list.length / max) * 100}%` }}
+              />
+            </span>
+            <span className="w-6 text-right tabular-nums">{list.length}</span>
+          </span>
+          <span className="truncate text-muted-foreground" title={list[0]?.input}>
+            “{list[0]?.input}”
+          </span>
+        </li>
+      ))}
+      {latest ? (
+        <li className="pt-1 text-[12px] text-muted-foreground">
+          Latest graded run{' '}
+          <span className="tabular-nums text-foreground">
+            {latest.passed} / {latest.total}
+          </span>{' '}
+          · {latest.model} · {dateTime(latest.startedAt)}
+        </li>
+      ) : (
+        <li className="pt-1 text-[12px] text-muted-foreground">No graded run recorded in this environment yet.</li>
+      )}
+    </ul>
+  );
+}
+
 export default async function BuildPage() {
   const reviewer = { allowReviewer: true } as const;
   const [session, health, cases, runs, theme, build, lab, askStatus] = await Promise.all([
@@ -253,7 +299,7 @@ export default async function BuildPage() {
   const engineerHref = (path: string) => (signedIn ? path : `/login?next=${encodeURIComponent(path)}`);
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-6 md:py-8">
+    <main className="mx-auto max-w-5xl px-4 py-6 md:py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground">
         <span>
           <Link href="/" className="font-heading font-bold uppercase tracking-[0.18em] text-foreground">
@@ -278,97 +324,85 @@ export default async function BuildPage() {
         </span>
       </div>
 
-      <header className="max-w-3xl">
-        <p className="eyebrow">The honesty page</p>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight md:text-3xl">
-          This is a hypothesis. Tell me where I am wrong.
-        </h1>
-        <p className="mt-2 text-[12px] uppercase tracking-[0.14em] text-muted-foreground">
-          Synthetic data · no production or customer systems accessed
-        </p>
-        <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
-          One candidate used a performance-horse operation’s public workflows — its sale conditions, its recipient
-          leasing terms, its embryo intake — to build a small working example of how those rules could be enforced,
-          explained and kept honest across the systems that already run them. It is not affiliated with, endorsed by, or
-          connected to any company, and it does not claim the operation lacks any of this. The vocabulary — flush, OPU
-          and ICSI, the 14-day check, the day-24 heartbeat, Coggins, settlement by Monday — is taken from those public
-          pages; where I have used a term the way the barn does not, that is the first thing to correct. Every row below
-          either runs for real or says that it does not.
-        </p>
+      {/* The hero: the claim, then the estate drawn from its own state, full width, because a picture this size has to be read. */}
+      <header>
+        <Reveal className="grid gap-6 md:grid-cols-[minmax(0,6fr)_minmax(0,6fr)] md:items-end">
+          <div>
+            <p className="eyebrow">The honesty page</p>
+            <h1 className="display mt-2 text-[clamp(28px,4vw,44px)] leading-[1.02] tracking-[-0.03em]">
+              This is a hypothesis. Tell me where I am wrong.
+            </h1>
+            <p className="mt-3 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+              Synthetic data · no production or customer systems accessed
+            </p>
+          </div>
+          <div>
+            <p className="text-[14px] leading-relaxed text-muted-foreground">
+              A performance-horse operation’s public workflows — its sale conditions, its recipient leasing terms, its
+              embryo intake — as a small working layer that enforces the rules, explains them, and stays honest across
+              the systems that already run them. Every figure on this page is read from the running build, or says that
+              it was not.
+            </p>
+            <p className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
+              Not affiliated with, endorsed by, or connected to any company; it does not claim the operation lacks any
+              of this. Where a term is used the way the barn does not, that is the first thing to correct.
+            </p>
+          </div>
+        </Reveal>
+        <Reveal delay={0.1} className="card-op mt-6 p-3 md:p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="eyebrow">The estate, from its own state</p>
+            <p className="text-[11px] text-muted-foreground">
+              every dot and figure read from the running API · nothing drawn by hand
+            </p>
+          </div>
+          <div className="mt-3">
+            <EstateMap health={health} build={build} lab={lab} ask={askStatus} />
+          </div>
+        </Reveal>
       </header>
 
-      <section className="mt-8">
-        <BuildHealthPanel health={build} lab={lab} ask={askStatus} signedIn={signedIn} />
+      <section className="mt-10">
+        <Gauntlet health={build} />
       </section>
 
-      {health ? (
-        <section className="mt-8">
-          <h2 className="text-[14px] font-semibold">Right now, in this environment</h2>
-          <ul className="mt-2 grid gap-1 sm:grid-cols-5">
-            {Object.entries(health.integrations)
-              .filter(([k]) => k !== 'anthropic')
-              .map(([k, v]) => (
-                <li key={k} className="flex items-center justify-between rounded-md border px-3 py-1.5 text-[12px]">
-                  <span className="capitalize">{k === 'qbo' ? 'QuickBooks' : k}</span>
-                  <span className={v === 'live' ? 'text-ok' : 'text-muted-foreground'}>
-                    {v === 'live' ? (k === 'stripe' ? 'test mode' : 'live') : 'simulated'}
-                  </span>
-                </li>
-              ))}
-            {/* The assistant's row comes from what is actually answering, not from which keys are set. */}
-            <li className="flex items-center justify-between rounded-md border px-3 py-1.5 text-[12px]">
-              <span>Model</span>
-              <span className={askStatus?.live ? 'text-ok' : 'text-muted-foreground'}>
-                {askStatus?.provider === 'ollama'
-                  ? `local · ${askStatus.model.replace(/^ollama\//, '')}`
-                  : askStatus?.provider === 'openai'
-                    ? `hosted · ${askStatus.model.replace(/^hosted\//, '')}`
-                    : askStatus?.provider === 'anthropic'
-                      ? `Anthropic · ${askStatus.model}`
-                      : 'offline · deterministic'}
-              </span>
-            </li>
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="mt-8">
-        <h2 className="text-[14px] font-semibold">Sensitive records, and what the assistant may do with them</h2>
-        <p className="mt-1 max-w-2xl text-[12px] text-muted-foreground">
-          Veterinary and financial data is where a wrong answer costs something. These are enforced in code, not in a
-          prompt, and each names the file to read.
-        </p>
-        <ul className="mt-2 divide-y rounded-md border text-[13px]">
-          {SENSITIVE.map((r) => (
-            <li key={r.rule} className="grid gap-1 px-3 py-2 md:grid-cols-[1fr_minmax(0,300px)]">
-              <span>{r.rule}</span>
-              <span className="code break-all text-[11px] text-muted-foreground md:text-right">{r.where}</span>
-            </li>
-          ))}
-        </ul>
+      <section className="mt-10">
+        <h2 className="text-[14px] font-semibold">Right now, in this environment</h2>
+        <div className="mt-3">
+          <BuildHealthPanel health={build} lab={lab} ask={askStatus} signedIn={signedIn} />
+        </div>
       </section>
 
-      <section className="mt-8">
-        <h2 className="text-[14px] font-semibold">Under failure, in deployment</h2>
-        <p className="mt-1 max-w-2xl text-[12px] text-muted-foreground">
-          Nine conditions a running system meets, with the mechanism that answers each and an honest status. The long
-          form, with file names, is <span className="code">docs/OPERATIONS_EDGE_CASES.md</span>; the failures themselves
-          can be injected in the lab.
-        </p>
-        <ul className="mt-2 divide-y rounded-md border text-[12.5px]" data-testid="edge-cases">
+      <section className="mt-10">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-[14px] font-semibold">Under failure, in deployment</h2>
+          <p className="text-[12px] text-muted-foreground">
+            nine conditions · each one can be injected in the lab ·{' '}
+            <span className="code">docs/OPERATIONS_EDGE_CASES.md</span>
+          </p>
+        </div>
+        <Stagger className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="edge-cases">
           {EDGE_CASES.map((e) => (
-            <li key={e.condition} className="grid gap-1 px-3 py-2 md:grid-cols-[minmax(0,260px)_1fr_auto] md:gap-3">
-              <span className="font-medium">{e.condition}</span>
-              <span className="text-muted-foreground">{e.answer}</span>
-              <span className={e.status === 'built' ? 'readout text-ok' : 'readout text-warn'}>{e.status}</span>
-            </li>
+            <StaggerItem key={e.condition}>
+              <div className="card-op h-full p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[13px] font-medium leading-snug">{e.condition}</p>
+                  <span className={cn('readout shrink-0', e.status === 'built' ? 'text-ok' : 'text-warn')}>
+                    {e.status}
+                  </span>
+                </div>
+                <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">{e.answer}</p>
+              </div>
+            </StaggerItem>
           ))}
-        </ul>
+        </Stagger>
       </section>
 
-      <section className="mt-8 grid gap-6 md:grid-cols-2">
-        <div>
-          <h2 className="text-[14px] font-semibold">Real</h2>
+      <section className="mt-10 grid gap-6 md:grid-cols-2">
+        <div className="card-op p-4">
+          <h2 className="flex items-center gap-2 text-[14px] font-semibold">
+            <span className="size-2 rounded-full bg-ok" aria-hidden /> Real
+          </h2>
           <ul className="mt-2 space-y-2 text-[13px] leading-relaxed">
             {REAL.map((t) => (
               <li key={t} className="flex gap-2">
@@ -378,8 +412,10 @@ export default async function BuildPage() {
             ))}
           </ul>
         </div>
-        <div>
-          <h2 className="text-[14px] font-semibold">Simulated, and labeled as such on every screen</h2>
+        <div className="card-op p-4">
+          <h2 className="flex items-center gap-2 text-[14px] font-semibold">
+            <span className="size-2 rounded-full bg-warn" aria-hidden /> Simulated, and labeled as such on every screen
+          </h2>
           <ul className="mt-2 space-y-2 text-[13px] leading-relaxed">
             {SIMULATED.map((t) => (
               <li key={t} className="flex gap-2">
@@ -392,91 +428,11 @@ export default async function BuildPage() {
       </section>
 
       <section className="mt-10">
-        <h2 className="text-[14px] font-semibold">Where this sits in an estate that already runs</h2>
-        <p className="mt-1 max-w-2xl text-[12px] text-muted-foreground">
-          The operation runs several applications today, and this does not claim it lacks any of them. The existing
-          applications own the writes. This layer reads projections of them, runs the published rules, raises what needs
-          a person, explains it in two registers, and proposes; a person acts, in the system that owns the record.
-        </p>
-        <div className="mt-3 overflow-hidden rounded-md border text-[12px]">
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)] gap-x-3 border-b bg-muted/40 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-            <span>Existing application</span>
-            <span>Owns the writes</span>
-            <span>This layer</span>
-          </div>
-          <ul className="divide-y">
-            {ESTATE.map((e) => (
-              <li
-                key={e.name}
-                className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)] gap-x-3 px-3 py-1.5"
-              >
-                <span className="font-medium">{e.name}</span>
-                <span className="text-muted-foreground">{e.owns}</span>
-                <span className="text-muted-foreground">{e.here}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="flex flex-wrap items-center gap-x-2 border-t bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
-            <span className="readout">existing apps</span> → <span className="readout">read projections</span> →{' '}
-            <span className="readout">rules · detectors · explain</span> → <span className="readout">propose</span> →{' '}
-            <span className="readout text-foreground">a person acts</span>
-          </p>
-        </div>
-      </section>
-
-      <section className="mt-10 rounded-md border p-4 text-[13px] leading-relaxed">
-        <p className="font-medium">When fine-tuning would be the right call, and why not now</p>
-        <p className="mt-1 text-muted-foreground">
-          Fine-tuning earns its place when the vocabulary is stable, the corrections are many, and the cost of a wrong
-          phrase is low — a model that writes the barn’s digest in the barn’s words, from a few thousand graded
-          examples, is a good use of it. It is the wrong tool for what this build protects: whether a mare is cleared,
-          whether funds have cleared, whether a fee is owed. Those are rules, and a rule that lives in weights cannot be
-          read, tested or corrected in an afternoon. So the model here is stock, with a cache; the rules are code; the
-          corrections are eval cases; and the day the corrections outnumber the rules is the day ADR-009 gets revisited.
-        </p>
-        <p className="mt-2 text-muted-foreground">
-          Editorial standard for every screen: no card, chart or animation goes in unless it says something a person
-          needs; the operation’s identity is a palette and a register, never a mark, a photograph or a name; and nothing
-          is written here that the public pages do not support, or it is labeled an assumption.
-        </p>
-      </section>
-
-      <section className="mt-10">
-        <h2 className="text-[14px] font-semibold">Non-goals, on purpose</h2>
-        <ul className="mt-2 divide-y rounded-md border text-[13px]">
-          {NON_GOALS.map((n) => (
-            <li key={n.what} className="grid gap-1 px-3 py-2 md:grid-cols-[minmax(0,300px)_1fr]">
-              <span className="font-medium">{n.what}</span>
-              <span className="text-muted-foreground">{n.why}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="mt-10">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="text-[14px] font-semibold">What the assistant is measured on</h2>
-            <p className="mt-1 max-w-2xl text-[12px] text-muted-foreground">
-              Each case runs the real pipeline — tools, permissions, the evidence verifier — against the seeded records
-              and is graded deterministically: the codes it must cite, the abstention it must give, the phrases it must
-              never say. A thumbs-down with a correction becomes a case. Without a model key the deterministic answerer
-              runs the same tools through the same verifier; the front door’s four questions pass that way in the test
-              suite.
-            </p>
-          </div>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-[14px] font-semibold">What the assistant is measured on</h2>
           <p className="text-[12px] text-muted-foreground">
-            {latest ? (
-              <>
-                Latest run{' '}
-                <span className="tabular-nums text-foreground">
-                  {latest.passed} / {latest.total}
-                </span>{' '}
-                · {latest.model} · {dateTime(latest.startedAt)}
-              </>
-            ) : (
-              <>No graded run recorded in this environment yet.</>
-            )}
+            {enabled.length} cases · graded deterministically: the codes it must cite, the abstention it must give, the
+            phrases it must never say
           </p>
         </div>
         {enabled.length === 0 ? (
@@ -484,78 +440,184 @@ export default async function BuildPage() {
             The eval set could not be read. Start the API and reseed to see it.
           </p>
         ) : (
-          <div className="mt-3 space-y-3">
-            {Object.entries(byCategory).map(([category, list]) => (
-              <div key={category}>
-                <p className="eyebrow">{label(category)}</p>
-                <ul className="mt-1 divide-y rounded-md border">
-                  {list.map((c) => (
-                    <li key={c.id} className="grid gap-1 px-3 py-2 text-[12px] md:grid-cols-[1fr_minmax(0,320px)]">
-                      <span>
-                        “{c.input}” <span className="text-muted-foreground">· {label(c.actorRole)}</span>
-                        {c.source === 'FROM_FEEDBACK' ? (
-                          <StatusPill tone="brand" className="ml-2">
-                            from a thumbs-down
-                          </StatusPill>
-                        ) : null}
-                      </span>
-                      <span
-                        className="code truncate text-[11px] text-muted-foreground"
-                        title={JSON.stringify(c.expected)}
-                      >
-                        {JSON.stringify(c.expected)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+          <>
+            <EvalScorecard byCategory={byCategory} latest={latest} />
+            <details className="group mt-3 rounded-md border">
+              <summary className="cursor-pointer select-none px-3 py-2 text-[12px] text-muted-foreground hover:text-foreground">
+                Every case, with what it must and must not do
+              </summary>
+              <div className="space-y-3 border-t px-3 py-3">
+                {Object.entries(byCategory).map(([category, list]) => (
+                  <div key={category}>
+                    <p className="eyebrow">{label(category)}</p>
+                    <ul className="mt-1 divide-y rounded-md border">
+                      {list.map((c) => (
+                        <li key={c.id} className="grid gap-1 px-3 py-2 text-[12px] md:grid-cols-[1fr_minmax(0,320px)]">
+                          <span>
+                            “{c.input}” <span className="text-muted-foreground">· {label(c.actorRole)}</span>
+                            {c.source === 'FROM_FEEDBACK' ? (
+                              <StatusPill tone="brand" className="ml-2">
+                                from a thumbs-down
+                              </StatusPill>
+                            ) : null}
+                          </span>
+                          <span
+                            className="code truncate text-[11px] text-muted-foreground"
+                            title={JSON.stringify(c.expected)}
+                          >
+                            {JSON.stringify(c.expected)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </details>
+          </>
         )}
       </section>
 
-      <section className="mt-10 grid gap-6 md:grid-cols-[1fr_1fr]">
-        <div>
-          <h2 className="text-[14px] font-semibold">How AI was used to build this</h2>
-          <ul className="mt-2 space-y-2 text-[13px] leading-relaxed text-muted-foreground">
-            {AI_USE.map((t) => (
-              <li key={t}>{t}</li>
-            ))}
-          </ul>
-          <p className="mt-2 text-[12px] text-muted-foreground">
-            The full record is <span className="code">docs/AI_BUILD_LEDGER.md</span> in the repository: what the agent
-            wrote, what a person rejected, and why.
+      <section className="mt-10">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-[14px] font-semibold">Decisions</h2>
+          <p className="text-[12px] text-muted-foreground">
+            {DECISIONS.length} records, each with what it costs and what would change it ·{' '}
+            <span className="code">docs/decisions/</span>
           </p>
         </div>
-        <div>
-          <h2 className="text-[14px] font-semibold">Decisions, one line each</h2>
-          <ol className="mt-2 space-y-1 text-[12px] leading-relaxed">
-            {DECISIONS.map((d) => (
-              <li key={d.id} className="flex gap-2">
-                <span className="code shrink-0 text-muted-foreground">{d.id}</span>
-                <span>{d.text}</span>
-              </li>
-            ))}
-          </ol>
-          <p className="mt-2 text-[12px] text-muted-foreground">
-            Each record says what it costs and what would change it: <span className="code">docs/decisions/</span>.
-          </p>
-        </div>
+        <ol className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3" data-testid="decisions">
+          {DECISIONS.map((d) => (
+            <li key={d.id} className="flex gap-2 rounded-md border px-3 py-2 text-[12px] leading-snug">
+              <span className="code shrink-0 text-muted-foreground">{d.id}</span>
+              <span>{d.text}</span>
+            </li>
+          ))}
+        </ol>
       </section>
 
-      <section className="mt-10 rounded-md border bg-muted/30 p-4 text-[13px] leading-relaxed">
-        <p className="font-medium">How to correct it</p>
-        <p className="mt-1 text-muted-foreground">
-          Every fact the rules stand on is cited to a public page; everything else is labeled hypothesis or assumption
-          in <span className="code">docs/ASSUMPTIONS.md</span>. The people who do the work can correct that file in an
-          afternoon, and the code follows it, not the other way round. If the day-14 check is not how the barn sequences
-          it, if the clearance window is wrong, if a lease fee is not what follows a heartbeat, if the sale office
-          releases papers on a rule other than cleared funds — say so. That is the point of showing it.
-        </p>
-        <p className="mt-2 text-muted-foreground">
-          No portal, login, admin page or customer record was accessed. Nothing here carries a real name, logo,
-          photograph or brand mark.
-        </p>
+      <section className="mt-10">
+        <h2 className="text-[14px] font-semibold">Non-goals, on purpose</h2>
+        <ul className="mt-2 grid gap-2 sm:grid-cols-2 text-[13px]">
+          {NON_GOALS.map((n) => (
+            <li key={n.what} className="rounded-md border px-3 py-2">
+              <span className="font-medium">{n.what}</span>
+              <span className="block text-[12px] text-muted-foreground">{n.why}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* The fine print: everything the instruments stand on, for the reader who wants the file names. */}
+      <section className="mt-10 space-y-2">
+        <h2 className="text-[14px] font-semibold">The fine print</h2>
+        <details className="rounded-md border">
+          <summary className="cursor-pointer select-none px-3 py-2 text-[13px] hover:text-foreground">
+            Sensitive records, and what the assistant may do with them
+          </summary>
+          <div className="border-t px-3 py-3">
+            <p className="text-[12px] text-muted-foreground">
+              Veterinary and financial data is where a wrong answer costs something. These are enforced in code, not in
+              a prompt, and each names the file to read.
+            </p>
+            <ul className="mt-2 divide-y text-[13px]">
+              {SENSITIVE.map((r) => (
+                <li key={r.rule} className="grid gap-1 py-2 md:grid-cols-[1fr_minmax(0,300px)]">
+                  <span>{r.rule}</span>
+                  <span className="code break-all text-[11px] text-muted-foreground md:text-right">{r.where}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
+        <details className="rounded-md border">
+          <summary className="cursor-pointer select-none px-3 py-2 text-[13px] hover:text-foreground">
+            Where this sits in an estate that already runs
+          </summary>
+          <div className="border-t px-3 py-3">
+            <p className="text-[12px] text-muted-foreground">
+              The operation runs several applications today, and this does not claim it lacks any of them. The existing
+              applications own the writes. This layer reads projections of them, runs the published rules, raises what
+              needs a person, explains it in two registers, and proposes; a person acts, in the system that owns the
+              record.
+            </p>
+            <div className="mt-3 overflow-hidden rounded-md border text-[12px]">
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)] gap-x-3 border-b bg-muted/40 px-3 py-1.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                <span>Existing application</span>
+                <span>Owns the writes</span>
+                <span>This layer</span>
+              </div>
+              <ul className="divide-y">
+                {ESTATE.map((e) => (
+                  <li
+                    key={e.name}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)] gap-x-3 px-3 py-1.5"
+                  >
+                    <span className="font-medium">{e.name}</span>
+                    <span className="text-muted-foreground">{e.owns}</span>
+                    <span className="text-muted-foreground">{e.here}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </details>
+        <details className="rounded-md border">
+          <summary className="cursor-pointer select-none px-3 py-2 text-[13px] hover:text-foreground">
+            When fine-tuning would be the right call, and why not now
+          </summary>
+          <div className="space-y-2 border-t px-3 py-3 text-[13px] leading-relaxed text-muted-foreground">
+            <p>
+              Fine-tuning earns its place when the vocabulary is stable, the corrections are many, and the cost of a
+              wrong phrase is low — a model that writes the barn’s digest in the barn’s words, from a few thousand
+              graded examples, is a good use of it. It is the wrong tool for what this build protects: whether a mare is
+              cleared, whether funds have cleared, whether a fee is owed. Those are rules, and a rule that lives in
+              weights cannot be read, tested or corrected in an afternoon. So the model here is stock, with a cache; the
+              rules are code; the corrections are eval cases; and the day the corrections outnumber the rules is the day
+              ADR-009 gets revisited.
+            </p>
+            <p>
+              Editorial standard for every screen: no card, chart or animation goes in unless it says something a person
+              needs; the operation’s identity is a palette and a register, never a mark, a photograph or a name; and
+              nothing is written here that the public pages do not support, or it is labeled an assumption.
+            </p>
+          </div>
+        </details>
+        <details className="rounded-md border">
+          <summary className="cursor-pointer select-none px-3 py-2 text-[13px] hover:text-foreground">
+            How AI was used to build this
+          </summary>
+          <div className="border-t px-3 py-3">
+            <ul className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
+              {AI_USE.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+            <p className="mt-2 text-[12px] text-muted-foreground">
+              The full record is <span className="code">docs/AI_BUILD_LEDGER.md</span> in the repository: what the agent
+              wrote, what a person rejected, and why.
+            </p>
+          </div>
+        </details>
+        <details className="rounded-md border">
+          <summary className="cursor-pointer select-none px-3 py-2 text-[13px] hover:text-foreground">
+            How to correct it
+          </summary>
+          <div className="space-y-2 border-t px-3 py-3 text-[13px] leading-relaxed text-muted-foreground">
+            <p>
+              Every fact the rules stand on is cited to a public page; everything else is labeled hypothesis or
+              assumption in <span className="code">docs/ASSUMPTIONS.md</span>. The people who do the work can correct
+              that file in an afternoon, and the code follows it, not the other way round. If the day-14 check is not
+              how the barn sequences it, if the clearance window is wrong, if a lease fee is not what follows a
+              heartbeat, if the sale office releases papers on a rule other than cleared funds — say so. That is the
+              point of showing it.
+            </p>
+            <p>
+              No portal, login, admin page or customer record was accessed. Nothing here carries a real name, logo,
+              photograph or brand mark.
+            </p>
+          </div>
+        </details>
       </section>
 
       <section className="mt-8 flex flex-wrap items-center gap-3 text-[13px]">

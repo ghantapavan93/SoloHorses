@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // `pnpm verify:report` — the same gates as `pnpm verify`, with each suite's count written down.
-// Writes .verify/last.json (git-ignored) so the honesty page can show a real, dated result
+// Writes .verify/last.json (git-ignored) and docs/verify/last.json (committed) so the honesty page can show a real, dated result
 // instead of a badge. Anything that fails is recorded as failed; nothing here rounds up.
 import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -231,5 +231,9 @@ const report = {
 for (const [name, line] of Object.entries(gauntlet))
   process.stdout.write(`gauntlet · ${name}: ${line.status} — ${line.detail}\n`);
 writeFileSync(resolve(out, 'last.json'), JSON.stringify(report, null, 2));
+// A copy that travels with the code: docs/verify/last.json is committed, so a deployment that never ran
+// the gate can still show a real, dated result — and say which commit it was of.
+mkdirSync(resolve(root, 'docs/verify'), { recursive: true });
+writeFileSync(resolve(root, 'docs/verify/last.json'), JSON.stringify(report, null, 2) + '\n');
 console.log(`\nverify report → .verify/last.json (${report.ok ? 'green' : 'RED'})`);
 if (!report.ok) process.exit(1);

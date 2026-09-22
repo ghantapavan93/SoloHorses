@@ -9,11 +9,16 @@ import { EnvService } from '../config/env.module';
 
 const ADVERSARIAL = new Set(['PERMISSION', 'INJECTION', 'VETERINARY_BOUNDARY', 'FINANCIAL_BOUNDARY']);
 
-/** What `pnpm verify:report` wrote last, if it ran on this machine. Never invented. */
+/**
+ * What `pnpm verify:report` wrote last: the run on this machine first, else the copy committed
+ * with the code (`docs/verify/last.json`), which names the commit it was of. Never invented.
+ */
 function lastVerifyReport(): Record<string, unknown> | null {
   for (const candidate of [
     resolve(process.cwd(), '.verify/last.json'),
     resolve(process.cwd(), '../../.verify/last.json'),
+    resolve(process.cwd(), 'docs/verify/last.json'),
+    resolve(process.cwd(), '../../docs/verify/last.json'),
   ]) {
     if (existsSync(candidate)) {
       try {
@@ -32,7 +37,9 @@ function lastVerifyReport(): Record<string, unknown> | null {
  * null when neither is known — the page then shows the report's commit alone.
  */
 function runningCommit(): string | null {
-  if (process.env.GIT_SHA) return process.env.GIT_SHA.slice(0, 7);
+  // The platforms say which commit they built; a container carries no repository to ask.
+  const given = process.env.GIT_SHA ?? process.env.RENDER_GIT_COMMIT ?? process.env.VERCEL_GIT_COMMIT_SHA;
+  if (given) return given.slice(0, 7);
   try {
     return (
       execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })

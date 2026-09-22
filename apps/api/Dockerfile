@@ -10,6 +10,8 @@ COPY packages/db/package.json packages/db/
 RUN pnpm install --frozen-lockfile
 COPY packages ./packages
 COPY apps/api ./apps/api
+# The last verify run, committed with the code, so the honesty page can show it from a host that never ran the gate.
+COPY docs/verify ./docs/verify
 RUN pnpm --filter @daysheet/domain build && pnpm --filter @daysheet/db build && pnpm --filter api build
 
 FROM node:22-bookworm-slim

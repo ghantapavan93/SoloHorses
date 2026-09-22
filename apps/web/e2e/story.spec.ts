@@ -120,6 +120,12 @@ test.describe('one mare, every handoff', () => {
   test('the honesty page reads the eval set as the reviewer', async ({ page }) => {
     await page.goto('/build');
     await expect(page.getByRole('heading', { name: /This is a hypothesis/ })).toBeVisible();
+    // The instruments read from the running build; the estate is drawn from its own state.
+    await expect(page.getByTestId('estate-map')).toBeVisible();
+    await expect(page.getByTestId('gauntlet-tests')).toBeVisible();
+    await expect(page.getByTestId('eval-scorecard')).toBeVisible();
+    // The full case list sits behind a summary; opening it shows every question.
+    await page.getByText('Every case, with what it must and must not do').click();
     await expect(page.getByText(/cleared for a transfer\?/).first()).toBeVisible();
     await expect(page.getByText('Non-goals, on purpose')).toBeVisible();
   });
