@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, use, useEffect, useState } from 'react';
 import { AnimatePresence, motion, useMotionValue, useReducedMotion } from 'motion/react';
 import { ContourField } from '@/components/landing/contour-field';
 import { Horse } from '@/components/story/horse';
@@ -11,7 +11,8 @@ import { cn } from '@/lib/utils';
  * a role and one true sentence from the seeded world (how many decisions wait, what she is
  * held on, what the money is waiting for). Not a testimonial: nobody is quoted, nobody is
  * pictured, because every person here is synthetic and the rule is that they stay that way.
- * The cards take turns; a person who asked for stillness gets the first one, and no turn.
+ * The cards take turns; a person who asked for stillness gets the first one, and no turn. They
+ * arrive as a promise from the server, so the field and the mare never wait for the API.
  */
 export interface SceneCard {
   role: string;
@@ -22,19 +23,9 @@ export interface SceneCard {
 
 const TURN_MS = 5_000;
 
-export function LoginScene({ cards, className }: { cards: SceneCard[]; className?: string }) {
-  const still = useReducedMotion();
-  const [index, setIndex] = useState(0);
+export function LoginScene({ cards, className }: { cards: Promise<SceneCard[]> | SceneCard[]; className?: string }) {
   const phase = useMotionValue(0);
   const erase = useMotionValue(0);
-
-  useEffect(() => {
-    if (still || cards.length < 2) return;
-    const timer = setInterval(() => setIndex((i) => (i + 1) % cards.length), TURN_MS);
-    return () => clearInterval(timer);
-  }, [still, cards.length]);
-
-  const card = cards[index] ?? cards[0];
 
   return (
     <div
@@ -61,10 +52,31 @@ export function LoginScene({ cards, className }: { cards: SceneCard[]; className
           Five systems each hold a piece of it.
         </p>
       </div>
-      {/* What the day holds, one role at a time. */}
+      {/* What the day holds, one role at a time; nothing until the records have been read. */}
+      <Suspense fallback={null}>
+        <Cards cards={cards} />
+      </Suspense>
+    </div>
+  );
+}
+
+function Cards({ cards: source }: { cards: Promise<SceneCard[]> | SceneCard[] }) {
+  const cards = source instanceof Promise ? use(source) : source;
+  const still = useReducedMotion();
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (still || cards.length < 2) return;
+    const timer = setInterval(() => setIndex((i) => (i + 1) % cards.length), TURN_MS);
+    return () => clearInterval(timer);
+  }, [still, cards.length]);
+
+  const card = cards[index] ?? cards[0];
+  return (
+    <>
       {card ? (
         <div className="absolute bottom-[6%] left-[6%] w-[min(360px,70%)]">
-          <AnimatePresence mode="wait" initial={false}>
+          <AnimatePresence mode="wait">
             <motion.div
               key={card.role}
               className="rounded-lg border border-white/10 bg-black/40 p-4 shadow-[0_20px_60px_rgb(0_0_0/0.45)] backdrop-blur-md"
@@ -93,6 +105,6 @@ export function LoginScene({ cards, className }: { cards: SceneCard[]; className
           ) : null}
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

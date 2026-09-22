@@ -57,16 +57,19 @@ function cardsFrom(summary: OperationsSummary | null, story: Story | null): Scen
   return cards;
 }
 
+/** The scene's cards come from the API; the sign-in page never waits for them — the promise streams into the scene. */
+function sceneCards(): Promise<SceneCard[]> {
+  const reviewer = { allowReviewer: true } as const;
+  return Promise.all([
+    apiFetchOrNull<OperationsSummary>('/operations/summary', reviewer),
+    apiFetchOrNull<Story>('/story', reviewer),
+  ]).then(([summary, story]) => cardsFrom(summary, story));
+}
+
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const { next } = await searchParams;
   const session = await auth();
   if (session?.user) redirect(safeNext(next));
-  const reviewer = { allowReviewer: true } as const;
-  const [summary, story] = await Promise.all([
-    apiFetchOrNull<OperationsSummary>('/operations/summary', reviewer),
-    apiFetchOrNull<Story>('/story', reviewer),
-  ]);
-  const cards = cardsFrom(summary, story);
   const target = safeNext(next);
 
   return (
@@ -111,7 +114,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </div>
       </section>
       <aside className="hidden p-4 md:block md:p-5">
-        <LoginScene cards={cards} className="h-full min-h-[560px]" />
+        <LoginScene cards={sceneCards()} className="h-full min-h-[560px]" />
       </aside>
     </main>
   );
