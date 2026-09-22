@@ -32,6 +32,15 @@ const secret = new TextEncoder().encode(env.AUTH_SECRET);
 
 /** Longer than any honest read, shorter than the hosting platform's patience with a function. */
 const API_TIMEOUT_MS = 25_000;
+/**
+ * First contact: an API that has not answered this process recently may be asleep on free
+ * hosting, and a sleeping one does not refuse — the platform holds the connection while the
+ * instance starts. A short budget then turns the wait into the waking page within seconds
+ * instead of the full timeout; a warm API answers in well under it.
+ */
+const FIRST_CONTACT_TIMEOUT_MS = 4_000;
+const RECENTLY_MS = 60_000;
+let lastAnswerAt = 0;
 
 /**
  * The identity the public front door reads as when nobody is signed in. Seeded with a fixed
@@ -68,6 +77,7 @@ export async function apiFetch<T>(
   headers.set('x-correlation-id', init.correlationId ?? newCorrelationId());
   if (init.json !== undefined) headers.set('Content-Type', 'application/json');
   const correlationId = headers.get('x-correlation-id');
+  const budgetMs = Date.now() - lastAnswerAt < RECENTLY_MS ? API_TIMEOUT_MS : FIRST_CONTACT_TIMEOUT_MS;
   let response: Response;
   try {
     response = await fetch(`${env.API_URL}${path}`, {
@@ -75,8 +85,9 @@ export async function apiFetch<T>(
       headers,
       body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
       cache: 'no-store',
-      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+      signal: AbortSignal.timeout(budgetMs),
     });
+    lastAnswerAt = Date.now();
   } catch (error) {
     // Nothing listening, a reset mid-handshake, or no answer in time: free hosting sleeps after a
     // quiet quarter hour and takes most of a minute to wake. One code for all of it, so a page can
@@ -85,7 +96,7 @@ export async function apiFetch<T>(
     throw new ApiError(
       503,
       'API_UNREACHABLE',
-      timedOut ? `The API did not answer within ${API_TIMEOUT_MS / 1000}s` : 'The API did not answer',
+      timedOut ? `The API did not answer within ${budgetMs / 1000}s` : 'The API did not answer',
       undefined,
       correlationId,
     );
