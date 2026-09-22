@@ -1,0 +1,79 @@
+{
+  "startedAt": "2026-09-22T00:12:02.436Z",
+  "finishedAt": "2026-09-22T00:20:01.635Z",
+  "commit": "a93388e",
+  "dirty": false,
+  "ok": true,
+  "gates": {
+    "lint": {
+      "ok": true,
+      "ms": 76191
+    },
+    "typecheck": {
+      "ok": true,
+      "ms": 22982
+    },
+    "build": {
+      "ok": true,
+      "ms": 83931
+    }
+  },
+  "suites": {
+    "domain": {
+      "ok": true,
+      "passed": 144,
+      "total": 144,
+      "ms": 14381
+    },
+    "db": {
+      "ok": true,
+      "passed": 3,
+      "total": 3,
+      "ms": 3747
+    },
+    "web": {
+      "ok": true,
+      "passed": 24,
+      "total": 24,
+      "ms": 6092
+    },
+    "api": {
+      "ok": true,
+      "passed": 123,
+      "total": 123,
+      "ms": 67628
+    },
+    "e2e": {
+      "ok": true,
+      "passed": 60,
+      "total": 60,
+      "ms": 197637
+    }
+  },
+  "gauntlet": {
+    "architecture": {
+      "status": "PASS",
+      "detail": "0 violations · 526 modules · 1677 edges",
+      "ms": 6222
+    },
+    "properties": {
+      "status": "PASS",
+      "detail": "13 / 13 properties · 5,200 generated cases"
+    },
+    "mutation": {
+      "status": "PASS",
+      "detail": "75.8% · 617 / 814 mutants killed",
+      "at": "2026-09-20T02:37:35.996Z"
+    },
+    "fuzz": {
+      "status": "PASS",
+      "detail": "91 operations · 1,339 cases · 0 server errors",
+      "at": "2026-09-20T05:12:49.030146+00:00"
+    },
+    "accessibility": {
+      "status": "PASS",
+      "detail": "9 pages · 0 serious or critical · 0 minor",
+      "at": "2026-09-22T00:18:35.418Z"
+    }
+  }
+}
